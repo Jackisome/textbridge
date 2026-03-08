@@ -1,4 +1,6 @@
 import type { ProviderId } from '../../../shared/types/provider';
+import { createCustomProvider } from './custom-provider';
+import { createDeepseekProvider } from './deepseek-provider';
 import { createMockProvider } from './mock-provider';
 import type { TranslationProvider } from './types';
 
@@ -25,5 +27,5 @@ export function createProviderRegistry(providers: TranslationProvider[]): Provid
 }
 
 export function createDefaultProviderRegistry(): ProviderRegistry {
-  return createProviderRegistry([createMockProvider()]);
+  return createProviderRegistry([createMockProvider(), createDeepseekProvider(), createCustomProvider()]);
 }
