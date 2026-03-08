@@ -3,8 +3,10 @@ import { createClaudeProvider } from './claude-provider';
 import { createCustomProvider } from './custom-provider';
 import { createDeepseekProvider } from './deepseek-provider';
 import { createGeminiProvider } from './gemini-provider';
+import { createGoogleProvider } from './google-provider';
 import { createMinimaxProvider } from './minimax-provider';
 import { createMockProvider } from './mock-provider';
+import { createTencentProvider } from './tencent-provider';
 import { createTongyiProvider } from './tongyi-provider';
 import type { TranslationProvider } from './types';
 
@@ -32,12 +34,14 @@ export function createProviderRegistry(providers: TranslationProvider[]): Provid
 
 export function createDefaultProviderRegistry(): ProviderRegistry {
   return createProviderRegistry([
-    createMockProvider(),
-    createClaudeProvider(),
-    createDeepseekProvider(),
-    createMinimaxProvider(),
-    createGeminiProvider(),
-    createTongyiProvider(),
-    createCustomProvider()
+    createMockProvider() as TranslationProvider,
+    createClaudeProvider() as TranslationProvider,
+    createDeepseekProvider() as TranslationProvider,
+    createMinimaxProvider() as TranslationProvider,
+    createGeminiProvider() as TranslationProvider,
+    createGoogleProvider() as TranslationProvider,
+    createTencentProvider() as TranslationProvider,
+    createTongyiProvider() as TranslationProvider,
+    createCustomProvider() as TranslationProvider
   ]);
 }
