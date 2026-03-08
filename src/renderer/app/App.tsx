@@ -1,93 +1,120 @@
-const stack = [
-  {
-    name: 'Electron',
-    description: '桌面壳层、窗口管理与原生能力入口'
-  },
-  {
-    name: 'React',
-    description: '渲染进程 UI 组件系统'
-  },
-  {
-    name: 'Vite',
-    description: '前端开发服务器、HMR 与打包工具'
-  },
-  {
-    name: 'TypeScript',
-    description: '主进程、预加载与前端代码的类型系统'
-  },
-  {
-    name: 'Preload + ContextBridge',
-    description: '安全暴露 Electron 与 Node 能力'
-  }
-];
+import { useEffect, useState } from 'react';
 
-const commands = [
-  'npm run dev',
-  'npm run build',
-  'npm run typecheck',
-  'npm start'
-];
+import { defaultTranslationClientSettings } from '../../shared/constants/default-settings';
+import type { ElectronInfo } from '../../shared/types/preload';
+import { SettingsPage } from '../pages/settings-page';
+import {
+  areSettingsEqual,
+  cloneSettings,
+  loadPersistedSettings,
+  savePersistedSettings
+} from '../services/settings-storage';
+import type { TranslationClientSettings } from '../types/settings';
+
+interface AppState {
+  settings: TranslationClientSettings;
+  savedSettings: TranslationClientSettings;
+  isLoading: boolean;
+  isSaving: boolean;
+  saveMessage: string | null;
+}
+
+const fallbackElectronInfo: ElectronInfo = {
+  chrome: '--',
+  electron: '--',
+  node: '--',
+  platform: 'unknown'
+};
+
+function createInitialState(): AppState {
+  return {
+    settings: cloneSettings(defaultTranslationClientSettings),
+    savedSettings: cloneSettings(defaultTranslationClientSettings),
+    isLoading: true,
+    isSaving: false,
+    saveMessage: '正在读取本地配置...'
+  };
+}
 
 export default function App() {
-  const { electronInfo } = window;
+  const [appState, setAppState] = useState<AppState>(createInitialState);
+  const electronInfo = window.electronInfo ?? fallbackElectronInfo;
+  const isDirty = !areSettingsEqual(appState.settings, appState.savedSettings);
+
+  useEffect(() => {
+    let disposed = false;
+
+    void loadPersistedSettings().then((persistedSettings) => {
+      if (disposed) {
+        return;
+      }
+
+      setAppState({
+        settings: persistedSettings,
+        savedSettings: cloneSettings(persistedSettings),
+        isLoading: false,
+        isSaving: false,
+        saveMessage: '配置已从本地磁盘载入。'
+      });
+    });
+
+    return () => {
+      disposed = true;
+    };
+  }, []);
+
+  function handleSettingChange<Key extends keyof TranslationClientSettings>(
+    key: Key,
+    value: TranslationClientSettings[Key]
+  ) {
+    setAppState((previousState) => ({
+      ...previousState,
+      saveMessage: null,
+      settings: {
+        ...previousState.settings,
+        [key]: value
+      }
+    }));
+  }
+
+  async function handleSave() {
+    setAppState((previousState) => ({
+      ...previousState,
+      isSaving: true,
+      saveMessage: '正在保存配置...'
+    }));
+
+    await savePersistedSettings(appState.settings);
+
+    setAppState((previousState) => ({
+      ...previousState,
+      isSaving: false,
+      saveMessage: '配置已写入本地磁盘，快捷键已立即重载。',
+      savedSettings: cloneSettings(previousState.settings)
+    }));
+  }
+
+  function handleReset() {
+    setAppState((previousState) => ({
+      ...previousState,
+      saveMessage: '已恢复为上次保存的配置。',
+      settings: cloneSettings(previousState.savedSettings)
+    }));
+  }
 
   return (
-    <main className="app-shell">
-      <section className="hero-card">
-        <span className="hero-badge">TextBridge Cross-Platform Client</span>
-        <h1>TextBridge 原型工程已就绪</h1>
-        <p className="hero-copy">
-          这是一个面向多端扩展的文本翻译客户端原型，当前首版以 Windows 系统级文本翻译闭环为落地方向。
-          Electron 主进程负责快捷键、托盘和系统交互，Vite + React 负责配置界面，TypeScript 统一约束跨层类型与业务边界。
-        </p>
-
-        <div className="version-grid">
-          <article>
-            <strong>Electron</strong>
-            <span>{electronInfo.electron}</span>
-          </article>
-          <article>
-            <strong>Node.js</strong>
-            <span>{electronInfo.node}</span>
-          </article>
-          <article>
-            <strong>Chromium</strong>
-            <span>{electronInfo.chrome}</span>
-          </article>
-          <article>
-            <strong>Platform</strong>
-            <span>{electronInfo.platform}</span>
-          </article>
-        </div>
-      </section>
-
-      <section className="content-grid">
-        <article className="panel">
-          <h2>当前开发组件</h2>
-          <div className="stack-list">
-            {stack.map((item) => (
-              <div className="stack-item" key={item.name}>
-                <h3>{item.name}</h3>
-                <p>{item.description}</p>
-              </div>
-            ))}
-          </div>
-        </article>
-
-        <article className="panel">
-          <h2>常用命令</h2>
-          <ul className="command-list">
-            {commands.map((command) => (
-              <li key={command}>
-                <code>{command}</code>
-              </li>
-            ))}
-          </ul>
-          <p className="command-tip">
-            开发时优先使用 <code>npm run dev</code>，它会启动 Vite 开发服务器、监听 Electron TypeScript 编译，并在主进程变化后自动重启 TextBridge。
-          </p>
-        </article>
-      </section>
-    </main>
+    <SettingsPage
+      electronInfo={electronInfo}
+      isDirty={isDirty}
+      isLoading={appState.isLoading}
+      isSaving={appState.isSaving}
+      saveMessage={appState.saveMessage}
+      settings={appState.settings}
+      onReset={handleReset}
+      onSave={() => {
+        void handleSave();
+      }}
+      onSettingChange={handleSettingChange}
+    />
   );
 }

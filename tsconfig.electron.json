@@ -3,7 +3,7 @@
     "target": "ES2022",
     "module": "commonjs",
     "moduleResolution": "node",
-    "rootDir": "src/electron",
+    "rootDir": "src",
     "outDir": "dist-electron",
     "lib": [
       "ES2022"
@@ -18,6 +18,10 @@
     "sourceMap": true
   },
   "include": [
-    "src/electron/**/*.ts"
+    "src/electron/**/*.ts",
+    "src/shared/**/*.ts"
+  ],
+  "exclude": [
+    "src/electron/**/*.test.ts"
   ]
 }

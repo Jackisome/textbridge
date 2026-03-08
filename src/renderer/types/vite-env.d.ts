@@ -1,12 +1,12 @@
 /// <reference types="vite/client" />
 
-interface ElectronInfo {
-  chrome: string;
-  electron: string;
-  node: string;
-  platform: string;
+import type { ElectronInfo, TextBridgeApi } from '../../shared/types/preload';
+
+declare global {
+  interface Window {
+    electronInfo: ElectronInfo;
+    textBridge: TextBridgeApi;
+  }
 }
 
-interface Window {
-  electronInfo: ElectronInfo;
-}
+export {};
