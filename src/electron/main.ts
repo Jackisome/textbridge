@@ -1,8 +1,13 @@
 import { app, BrowserWindow } from 'electron';
 import path from 'node:path';
+import { registerSettingsIpc } from './ipc/register-settings-ipc';
+import { createSettingsService } from './services/settings-service';
 
 const rendererDevUrl = process.env.VITE_DEV_SERVER_URL;
-const rendererProdHtml = path.join(__dirname, '..', 'dist', 'index.html');
+const rendererProdHtml = path.join(__dirname, '..', '..', 'dist', 'index.html');
+const settingsService = createSettingsService({
+  settingsFilePath: path.join(app.getPath('userData'), 'settings.json')
+});
 
 async function createWindow(): Promise<void> {
   const mainWindow = new BrowserWindow({
@@ -28,6 +33,7 @@ async function createWindow(): Promise<void> {
 }
 
 void app.whenReady().then(() => {
+  registerSettingsIpc(settingsService);
   void createWindow();
 
   app.on('activate', () => {
