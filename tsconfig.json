@@ -24,6 +24,11 @@
     "src/renderer/**/*.ts",
     "src/renderer/**/*.tsx",
     "src/renderer/**/*.d.ts",
+    "src/core/**/*.ts",
+    "src/shared/**/*.ts",
     "vite.config.ts"
+  ],
+  "exclude": [
+    "src/**/*.test.ts"
   ]
 }
