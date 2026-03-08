@@ -1,7 +1,11 @@
 import type { ProviderId } from '../../../shared/types/provider';
+import { createClaudeProvider } from './claude-provider';
 import { createCustomProvider } from './custom-provider';
 import { createDeepseekProvider } from './deepseek-provider';
+import { createGeminiProvider } from './gemini-provider';
+import { createMinimaxProvider } from './minimax-provider';
 import { createMockProvider } from './mock-provider';
+import { createTongyiProvider } from './tongyi-provider';
 import type { TranslationProvider } from './types';
 
 export interface ProviderRegistry {
@@ -27,5 +31,13 @@ export function createProviderRegistry(providers: TranslationProvider[]): Provid
 }
 
 export function createDefaultProviderRegistry(): ProviderRegistry {
-  return createProviderRegistry([createMockProvider(), createDeepseekProvider(), createCustomProvider()]);
+  return createProviderRegistry([
+    createMockProvider(),
+    createClaudeProvider(),
+    createDeepseekProvider(),
+    createMinimaxProvider(),
+    createGeminiProvider(),
+    createTongyiProvider(),
+    createCustomProvider()
+  ]);
 }
