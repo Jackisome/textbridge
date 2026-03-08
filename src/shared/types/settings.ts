@@ -1,4 +1,4 @@
-export type ProviderKind = 'mock' | 'http';
+import type { ProviderId, ProviderSettingsMap } from './provider';
 
 export type OutputMode = 'replace-original' | 'show-popup';
 
@@ -7,11 +7,7 @@ export type CaptureMode = 'uia-first' | 'clipboard-first';
 export interface TranslationClientSettings {
   sourceLanguage: string;
   targetLanguage: string;
-  providerKind: ProviderKind;
-  httpEndpoint: string;
-  apiKey: string;
-  model: string;
-  requestTimeoutMs: number;
+  activeProviderId: ProviderId;
   quickTranslateShortcut: string;
   contextTranslateShortcut: string;
   outputMode: OutputMode;
@@ -20,4 +16,5 @@ export interface TranslationClientSettings {
   startMinimized: boolean;
   enableClipboardFallback: boolean;
   enablePopupFallback: boolean;
+  providers: ProviderSettingsMap;
 }

@@ -35,7 +35,12 @@ describe('createSettingsService', () => {
     const tempDirectory = await createTempDirectory();
     const service = createSettingsService(path.join(tempDirectory, 'settings.json'));
 
-    await expect(service.loadSettings()).resolves.toEqual(defaultTranslationClientSettings);
+    const settings = await service.loadSettings();
+
+    expect(settings).toEqual(defaultTranslationClientSettings);
+    expect(settings.activeProviderId).toBe('mock');
+    expect(settings.providers.claude.apiKey).toBe('');
+    expect(settings.providers.tencent.region).toBe('ap-beijing');
   });
 
   it('persists settings to disk and reads them back', async () => {
@@ -44,10 +49,10 @@ describe('createSettingsService', () => {
     const service = createSettingsService(filePath);
     const nextSettings = {
       ...defaultTranslationClientSettings,
-      apiKey: 'secret-key',
-      providerKind: 'http' as const,
+      activeProviderId: 'claude' as const,
+      targetLanguage: 'en',
       quickTranslateShortcut: 'CommandOrControl+Alt+J',
-      requestTimeoutMs: 45000
+      enablePopupFallback: false
     };
 
     await service.saveSettings(nextSettings);

@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 import { defaultTranslationClientSettings } from '../../shared/constants/default-settings';
+import { providerIds } from '../../shared/types/provider';
 import type { TranslationClientSettings } from '../../shared/types/settings';
 
 type UnknownRecord = Record<string, unknown>;
@@ -32,25 +33,33 @@ function pickNumber(record: UnknownRecord, key: keyof TranslationClientSettings)
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
+function pickStringValue(record: UnknownRecord, key: string): string | null {
+  const value = record[key];
+
+  return typeof value === 'string' ? value : null;
+}
+
+function isProviderId(value: string | null): value is TranslationClientSettings['activeProviderId'] {
+  return value !== null && providerIds.includes(value as (typeof providerIds)[number]);
+}
+
+function cloneDefaultSettings(): TranslationClientSettings {
+  return structuredClone(defaultTranslationClientSettings);
+}
+
 function normalizeSettings(candidate: unknown): TranslationClientSettings {
   const record = asRecord(candidate);
 
   if (record === null) {
-    return { ...defaultTranslationClientSettings };
+    return cloneDefaultSettings();
   }
 
   return {
     sourceLanguage: pickString(record, 'sourceLanguage') ?? defaultTranslationClientSettings.sourceLanguage,
     targetLanguage: pickString(record, 'targetLanguage') ?? defaultTranslationClientSettings.targetLanguage,
-    providerKind:
-      pickString(record, 'providerKind') === 'http'
-        ? 'http'
-        : defaultTranslationClientSettings.providerKind,
-    httpEndpoint: pickString(record, 'httpEndpoint') ?? defaultTranslationClientSettings.httpEndpoint,
-    apiKey: pickString(record, 'apiKey') ?? defaultTranslationClientSettings.apiKey,
-    model: pickString(record, 'model') ?? defaultTranslationClientSettings.model,
-    requestTimeoutMs:
-      pickNumber(record, 'requestTimeoutMs') ?? defaultTranslationClientSettings.requestTimeoutMs,
+    activeProviderId: isProviderId(pickStringValue(record, 'activeProviderId'))
+      ? pickStringValue(record, 'activeProviderId')
+      : defaultTranslationClientSettings.activeProviderId,
     quickTranslateShortcut:
       pickString(record, 'quickTranslateShortcut') ??
       defaultTranslationClientSettings.quickTranslateShortcut,
@@ -72,7 +81,8 @@ function normalizeSettings(candidate: unknown): TranslationClientSettings {
       pickBoolean(record, 'enableClipboardFallback') ??
       defaultTranslationClientSettings.enableClipboardFallback,
     enablePopupFallback:
-      pickBoolean(record, 'enablePopupFallback') ?? defaultTranslationClientSettings.enablePopupFallback
+      pickBoolean(record, 'enablePopupFallback') ?? defaultTranslationClientSettings.enablePopupFallback,
+    providers: cloneDefaultSettings().providers
   };
 }
 
@@ -88,7 +98,7 @@ export function createSettingsService(configFilePath: string): SettingsService {
 
       return normalizeSettings(JSON.parse(rawContent) as unknown);
     } catch {
-      return { ...defaultTranslationClientSettings };
+      return cloneDefaultSettings();
     }
   }
 
