@@ -1,12 +1,17 @@
 /// <reference types="vite/client" />
 
-interface ElectronInfo {
-  chrome: string;
-  electron: string;
-  node: string;
-  platform: string;
+import type {
+  DesktopApi,
+  ElectronInfo,
+  PreloadContractShape
+} from '../../shared/types/ipc';
+
+declare global {
+  interface Window {
+    electronInfo: ElectronInfo;
+    textBridge: DesktopApi;
+    textBridgeContracts: PreloadContractShape;
+  }
 }
 
-interface Window {
-  electronInfo: ElectronInfo;
-}
+export {};
