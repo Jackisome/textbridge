@@ -49,7 +49,9 @@ function buildMessages(options: OpenAiCompatibleApiOptions): OpenAiMessage[] {
   return messages;
 }
 
-function extractMessageText(content: OpenAiCompatibleResponse['choices'] extends Array<infer _> ? unknown : never): string {
+function extractMessageText(
+  content: string | Array<{ type?: string; text?: string }> | undefined
+): string {
   if (typeof content === 'string') {
     return content;
   }

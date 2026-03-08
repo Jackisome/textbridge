@@ -192,11 +192,13 @@ function normalizeSettings(candidate: unknown): TranslationClientSettings {
     return cloneDefaultSettings();
   }
 
+  const activeProviderId = pickString(record, 'activeProviderId');
+
   return {
     sourceLanguage: pickString(record, 'sourceLanguage') ?? defaultTranslationClientSettings.sourceLanguage,
     targetLanguage: pickString(record, 'targetLanguage') ?? defaultTranslationClientSettings.targetLanguage,
-    activeProviderId: isProviderId(pickString(record, 'activeProviderId'))
-      ? pickString(record, 'activeProviderId')
+    activeProviderId: isProviderId(activeProviderId)
+      ? activeProviderId
       : defaultTranslationClientSettings.activeProviderId,
     quickTranslateShortcut:
       pickString(record, 'quickTranslateShortcut') ??
