@@ -1,4 +1,4 @@
-import { BrowserWindow } from 'electron';
+import { BrowserWindow, type BrowserWindowConstructorOptions } from 'electron';
 
 export interface WindowService {
   ensureMainWindow(): Promise<BrowserWindow>;
@@ -14,6 +14,29 @@ export interface CreateWindowServiceOptions {
   shouldHideOnClose: () => boolean;
 }
 
+export interface CreateMainWindowOptionsInput {
+  preloadPath: string;
+}
+
+export function createMainWindowOptions({
+  preloadPath
+}: CreateMainWindowOptionsInput): BrowserWindowConstructorOptions {
+  return {
+    width: 1280,
+    height: 840,
+    minWidth: 960,
+    minHeight: 640,
+    backgroundColor: '#0f172a',
+    autoHideMenuBar: true,
+    webPreferences: {
+      preload: preloadPath,
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false
+    }
+  };
+}
+
 export function createWindowService({
   rendererDevUrl,
   rendererProdHtml,
@@ -27,19 +50,11 @@ export function createWindowService({
       return mainWindow;
     }
 
-    mainWindow = new BrowserWindow({
-      width: 1280,
-      height: 840,
-      minWidth: 960,
-      minHeight: 640,
-      backgroundColor: '#0f172a',
-      autoHideMenuBar: true,
-      webPreferences: {
-        preload: preloadPath,
-        contextIsolation: true,
-        nodeIntegration: false
-      }
-    });
+    mainWindow = new BrowserWindow(
+      createMainWindowOptions({
+        preloadPath
+      })
+    );
 
     mainWindow.on('close', (event) => {
       if (!shouldHideOnClose()) {
