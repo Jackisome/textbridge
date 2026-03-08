@@ -15,28 +15,22 @@ function asRecord(value: unknown): UnknownRecord | null {
   return value as UnknownRecord;
 }
 
-function pickString(record: UnknownRecord, key: keyof TranslationClientSettings): string | null {
+function pickString(record: UnknownRecord, key: string): string | null {
   const value = record[key];
 
   return typeof value === 'string' ? value : null;
 }
 
-function pickBoolean(record: UnknownRecord, key: keyof TranslationClientSettings): boolean | null {
+function pickBoolean(record: UnknownRecord, key: string): boolean | null {
   const value = record[key];
 
   return typeof value === 'boolean' ? value : null;
 }
 
-function pickNumber(record: UnknownRecord, key: keyof TranslationClientSettings): number | null {
+function pickNumber(record: UnknownRecord, key: string): number | null {
   const value = record[key];
 
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
-}
-
-function pickStringValue(record: UnknownRecord, key: string): string | null {
-  const value = record[key];
-
-  return typeof value === 'string' ? value : null;
 }
 
 function isProviderId(value: string | null): value is TranslationClientSettings['activeProviderId'] {
@@ -45,6 +39,150 @@ function isProviderId(value: string | null): value is TranslationClientSettings[
 
 function cloneDefaultSettings(): TranslationClientSettings {
   return structuredClone(defaultTranslationClientSettings);
+}
+
+function normalizePromptTemplateProviderSettings<
+  Settings extends {
+    apiKey: string;
+    model: string;
+    baseUrl: string;
+    systemPrompt: string;
+    userPromptTemplate: string;
+    timeoutMs: number;
+  }
+>(candidate: unknown, defaults: Settings): Settings {
+  const record = asRecord(candidate);
+
+  if (record === null) {
+    return { ...defaults };
+  }
+
+  return {
+    ...defaults,
+    apiKey: pickString(record, 'apiKey') ?? defaults.apiKey,
+    model: pickString(record, 'model') ?? defaults.model,
+    baseUrl: pickString(record, 'baseUrl') ?? defaults.baseUrl,
+    systemPrompt: pickString(record, 'systemPrompt') ?? defaults.systemPrompt,
+    userPromptTemplate: pickString(record, 'userPromptTemplate') ?? defaults.userPromptTemplate,
+    timeoutMs: pickNumber(record, 'timeoutMs') ?? defaults.timeoutMs
+  };
+}
+
+function normalizeGeminiSettings(candidate: unknown): TranslationClientSettings['providers']['gemini'] {
+  const defaults = defaultTranslationClientSettings.providers.gemini;
+  const record = asRecord(candidate);
+
+  if (record === null) {
+    return { ...defaults };
+  }
+
+  return {
+    ...defaults,
+    apiKey: pickString(record, 'apiKey') ?? defaults.apiKey,
+    model: pickString(record, 'model') ?? defaults.model,
+    baseUrl: pickString(record, 'baseUrl') ?? defaults.baseUrl,
+    userPromptTemplate: pickString(record, 'userPromptTemplate') ?? defaults.userPromptTemplate,
+    timeoutMs: pickNumber(record, 'timeoutMs') ?? defaults.timeoutMs
+  };
+}
+
+function normalizeGoogleSettings(candidate: unknown): TranslationClientSettings['providers']['google'] {
+  const defaults = defaultTranslationClientSettings.providers.google;
+  const record = asRecord(candidate);
+
+  if (record === null) {
+    return { ...defaults };
+  }
+
+  return {
+    ...defaults,
+    baseUrl: pickString(record, 'baseUrl') ?? defaults.baseUrl,
+    timeoutMs: pickNumber(record, 'timeoutMs') ?? defaults.timeoutMs
+  };
+}
+
+function normalizeTencentSettings(candidate: unknown): TranslationClientSettings['providers']['tencent'] {
+  const defaults = defaultTranslationClientSettings.providers.tencent;
+  const record = asRecord(candidate);
+
+  if (record === null) {
+    return { ...defaults };
+  }
+
+  return {
+    ...defaults,
+    secretId: pickString(record, 'secretId') ?? defaults.secretId,
+    secretKey: pickString(record, 'secretKey') ?? defaults.secretKey,
+    region: pickString(record, 'region') ?? defaults.region,
+    baseUrl: pickString(record, 'baseUrl') ?? defaults.baseUrl,
+    timeoutMs: pickNumber(record, 'timeoutMs') ?? defaults.timeoutMs
+  };
+}
+
+function normalizeCustomSettings(candidate: unknown): TranslationClientSettings['providers']['custom'] {
+  const defaults = defaultTranslationClientSettings.providers.custom;
+  const record = asRecord(candidate);
+
+  if (record === null) {
+    return { ...defaults };
+  }
+
+  return {
+    ...defaults,
+    apiKey: pickString(record, 'apiKey') ?? defaults.apiKey,
+    model: pickString(record, 'model') ?? defaults.model,
+    baseUrl: pickString(record, 'baseUrl') ?? defaults.baseUrl,
+    requestFormat:
+      pickString(record, 'requestFormat') === 'openai-chat'
+        ? 'openai-chat'
+        : defaults.requestFormat,
+    systemPrompt: pickString(record, 'systemPrompt') ?? defaults.systemPrompt,
+    userPromptTemplate: pickString(record, 'userPromptTemplate') ?? defaults.userPromptTemplate,
+    timeoutMs: pickNumber(record, 'timeoutMs') ?? defaults.timeoutMs
+  };
+}
+
+function normalizeMockSettings(candidate: unknown): TranslationClientSettings['providers']['mock'] {
+  const defaults = defaultTranslationClientSettings.providers.mock;
+  const record = asRecord(candidate);
+
+  if (record === null) {
+    return { ...defaults };
+  }
+
+  return {
+    ...defaults,
+    prefix: pickString(record, 'prefix') ?? defaults.prefix,
+    latencyMs: pickNumber(record, 'latencyMs') ?? defaults.latencyMs
+  };
+}
+
+function normalizeProviders(candidate: unknown): TranslationClientSettings['providers'] {
+  const record = asRecord(candidate);
+
+  return {
+    mock: normalizeMockSettings(record?.mock),
+    claude: normalizePromptTemplateProviderSettings(
+      record?.claude,
+      defaultTranslationClientSettings.providers.claude
+    ),
+    deepseek: normalizePromptTemplateProviderSettings(
+      record?.deepseek,
+      defaultTranslationClientSettings.providers.deepseek
+    ),
+    minimax: normalizePromptTemplateProviderSettings(
+      record?.minimax,
+      defaultTranslationClientSettings.providers.minimax
+    ),
+    gemini: normalizeGeminiSettings(record?.gemini),
+    google: normalizeGoogleSettings(record?.google),
+    tencent: normalizeTencentSettings(record?.tencent),
+    tongyi: normalizePromptTemplateProviderSettings(
+      record?.tongyi,
+      defaultTranslationClientSettings.providers.tongyi
+    ),
+    custom: normalizeCustomSettings(record?.custom)
+  };
 }
 
 function normalizeSettings(candidate: unknown): TranslationClientSettings {
@@ -57,8 +195,8 @@ function normalizeSettings(candidate: unknown): TranslationClientSettings {
   return {
     sourceLanguage: pickString(record, 'sourceLanguage') ?? defaultTranslationClientSettings.sourceLanguage,
     targetLanguage: pickString(record, 'targetLanguage') ?? defaultTranslationClientSettings.targetLanguage,
-    activeProviderId: isProviderId(pickStringValue(record, 'activeProviderId'))
-      ? pickStringValue(record, 'activeProviderId')
+    activeProviderId: isProviderId(pickString(record, 'activeProviderId'))
+      ? pickString(record, 'activeProviderId')
       : defaultTranslationClientSettings.activeProviderId,
     quickTranslateShortcut:
       pickString(record, 'quickTranslateShortcut') ??
@@ -82,7 +220,7 @@ function normalizeSettings(candidate: unknown): TranslationClientSettings {
       defaultTranslationClientSettings.enableClipboardFallback,
     enablePopupFallback:
       pickBoolean(record, 'enablePopupFallback') ?? defaultTranslationClientSettings.enablePopupFallback,
-    providers: cloneDefaultSettings().providers
+    providers: normalizeProviders(record.providers)
   };
 }
 

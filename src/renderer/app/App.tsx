@@ -50,7 +50,7 @@ export default function App() {
       }
 
       setAppState({
-        settings: persistedSettings,
+        settings: cloneSettings(persistedSettings),
         savedSettings: cloneSettings(persistedSettings),
         isLoading: false,
         isSaving: false,
@@ -84,7 +84,7 @@ export default function App() {
       saveMessage: '正在保存配置...'
     }));
 
-    await savePersistedSettings(appState.settings);
+    await savePersistedSettings(cloneSettings(appState.settings));
 
     setAppState((previousState) => ({
       ...previousState,

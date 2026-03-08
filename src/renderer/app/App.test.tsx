@@ -49,9 +49,13 @@ describe('App settings persistence', () => {
 
   it('saves updated settings through the preload api', async () => {
     const user = userEvent.setup();
+    const loadedSettings = createSettings({
+      activeProviderId: 'claude',
+      quickTranslateShortcut: 'CommandOrControl+Shift+L'
+    });
     const getSettings = vi
       .fn<() => Promise<TranslationClientSettings>>()
-      .mockResolvedValue(createSettings({ quickTranslateShortcut: 'CommandOrControl+Shift+L' }));
+      .mockResolvedValue(loadedSettings);
     const saveSettings = vi.fn<(settings: TranslationClientSettings) => Promise<void>>().mockResolvedValue();
 
     window.textBridge = {
@@ -68,8 +72,10 @@ describe('App settings persistence', () => {
     await user.click(screen.getByRole('button', { name: '保存更改' }));
 
     await waitFor(() => {
+      expect(getSettings).toHaveBeenCalled();
       expect(saveSettings).toHaveBeenCalledWith(
         expect.objectContaining({
+          activeProviderId: 'claude',
           quickTranslateShortcut: 'CommandOrControl+Alt+J'
         })
       );

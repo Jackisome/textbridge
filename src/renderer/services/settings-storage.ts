@@ -2,7 +2,7 @@ import { defaultTranslationClientSettings } from '../../shared/constants/default
 import type { TranslationClientSettings } from '../../shared/types/settings';
 
 export function cloneSettings(settings: TranslationClientSettings): TranslationClientSettings {
-  return { ...settings };
+  return structuredClone(settings);
 }
 
 export function areSettingsEqual(
@@ -17,7 +17,7 @@ export async function loadPersistedSettings(): Promise<TranslationClientSettings
     return cloneSettings(defaultTranslationClientSettings);
   }
 
-  return window.textBridge.getSettings();
+  return cloneSettings(await window.textBridge.getSettings());
 }
 
 export async function savePersistedSettings(settings: TranslationClientSettings): Promise<void> {
@@ -25,5 +25,5 @@ export async function savePersistedSettings(settings: TranslationClientSettings)
     return;
   }
 
-  await window.textBridge.saveSettings(settings);
+  await window.textBridge.saveSettings(cloneSettings(settings));
 }

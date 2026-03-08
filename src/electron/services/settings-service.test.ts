@@ -52,7 +52,14 @@ describe('createSettingsService', () => {
       activeProviderId: 'claude' as const,
       targetLanguage: 'en',
       quickTranslateShortcut: 'CommandOrControl+Alt+J',
-      enablePopupFallback: false
+      enablePopupFallback: false,
+      providers: {
+        ...defaultTranslationClientSettings.providers,
+        claude: {
+          ...defaultTranslationClientSettings.providers.claude,
+          apiKey: 'test-key'
+        }
+      }
     };
 
     await service.saveSettings(nextSettings);
@@ -73,5 +80,28 @@ describe('createSettingsService', () => {
     const service = createSettingsService(filePath);
 
     await expect(service.loadSettings()).resolves.toEqual(defaultTranslationClientSettings);
+  });
+
+  it('preserves nested provider configuration updates', async () => {
+    const tempDirectory = await createTempDirectory();
+    const filePath = path.join(tempDirectory, 'settings.json');
+    const service = createSettingsService(filePath);
+
+    await service.saveSettings({
+      ...defaultTranslationClientSettings,
+      activeProviderId: 'claude',
+      providers: {
+        ...defaultTranslationClientSettings.providers,
+        claude: {
+          ...defaultTranslationClientSettings.providers.claude,
+          apiKey: 'test-key'
+        }
+      }
+    });
+
+    const settings = await service.loadSettings();
+
+    expect(settings.activeProviderId).toBe('claude');
+    expect(settings.providers.claude.apiKey).toBe('test-key');
   });
 });
