@@ -2,6 +2,7 @@ import { executeQuickTranslation } from '../../core/use-cases/execute-quick-tran
 import type { ExecutionReport } from '../../core/entities/execution-report';
 import type { TranslationResult } from '../../core/entities/translation';
 import type { AppSettings } from '../../shared/types/settings';
+import type { ExecutionReportContext } from './execution-report-service';
 
 export interface QuickTranslationRunner {
   run(): Promise<ExecutionReport>;
@@ -54,6 +55,9 @@ export interface CreateQuickTranslationRunnerOptions {
   systemInteractionService: QuickTranslationRunnerSystemInteractionService;
   translationProviderService: QuickTranslationRunnerTranslationProviderService;
   popupFallbackPresenter?: PopupFallbackPresenter;
+  reportRecorder?: {
+    record(report: ExecutionReport, context?: ExecutionReportContext): void;
+  };
   createReportId?: () => string;
   now?: () => string;
 }
@@ -65,6 +69,7 @@ export function createQuickTranslationRunner({
   popupFallbackPresenter = {
     showResult() {}
   },
+  reportRecorder,
   createReportId = () => crypto.randomUUID(),
   now = () => new Date().toISOString()
 }: CreateQuickTranslationRunnerOptions): QuickTranslationRunner {
@@ -75,7 +80,7 @@ export function createQuickTranslationRunner({
       const captureResult = await systemInteractionService.captureSelectedText(settings);
 
       if (!captureResult.success) {
-        return {
+        const report: ExecutionReport = {
           id: createReportId(),
           workflow: 'quick-translation',
           status: 'failed',
@@ -87,6 +92,9 @@ export function createQuickTranslationRunner({
           errorCode: captureResult.errorCode,
           errorMessage: captureResult.errorMessage
         };
+
+        reportRecorder?.record(report);
+        return report;
       }
 
       const translationRequestResult = executeQuickTranslation({
@@ -95,7 +103,7 @@ export function createQuickTranslationRunner({
       });
 
       if (!translationRequestResult.success) {
-        return {
+        const report: ExecutionReport = {
           id: createReportId(),
           workflow: 'quick-translation',
           status: 'failed',
@@ -107,6 +115,11 @@ export function createQuickTranslationRunner({
           errorCode: translationRequestResult.error.code,
           errorMessage: translationRequestResult.error.message
         };
+
+        reportRecorder?.record(report, {
+          sourceText: captureResult.text
+        });
+        return report;
       }
 
       const translationResult = await translationProviderService.translateWithSettings(
@@ -132,6 +145,10 @@ export function createQuickTranslationRunner({
       };
 
       if (writeBackResult.success) {
+        reportRecorder?.record(baseReport, {
+          sourceText: translationRequestResult.request.text,
+          translatedText: translationResult.translatedText
+        });
         return baseReport;
       }
 
@@ -150,14 +167,24 @@ export function createQuickTranslationRunner({
           report: fallbackReport
         });
 
+        reportRecorder?.record(fallbackReport, {
+          sourceText: translationRequestResult.request.text,
+          translatedText: translationResult.translatedText
+        });
         return fallbackReport;
       }
 
-      return {
+      const report: ExecutionReport = {
         ...baseReport,
         errorCode: writeBackResult.errorCode,
         errorMessage: writeBackResult.errorMessage
       };
+
+      reportRecorder?.record(report, {
+        sourceText: translationRequestResult.request.text,
+        translatedText: translationResult.translatedText
+      });
+      return report;
     }
   };
 }

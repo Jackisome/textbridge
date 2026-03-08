@@ -19,7 +19,8 @@ const runtimeStatus: RuntimeStatus = {
   platform: process.platform,
   activeProvider: DEFAULT_SETTINGS.provider.kind,
   registeredShortcuts: [],
-  lastExecution: null
+  lastExecution: null,
+  recentExecutions: []
 };
 
 const preloadContractShape: PreloadContractShape = {

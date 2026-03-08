@@ -57,7 +57,8 @@ export function createSettingsService({
         settings.shortcuts.quickTranslate,
         settings.shortcuts.contextTranslate
       ],
-      lastExecution: null
+      lastExecution: null,
+      recentExecutions: []
     };
   }
 

@@ -2,6 +2,7 @@ import { app, globalShortcut } from 'electron';
 import path from 'node:path';
 import { DEFAULT_SETTINGS } from '../shared/constants/default-settings';
 import { registerSettingsIpc } from './ipc/register-settings-ipc';
+import { createExecutionReportService } from './services/execution-report-service';
 import { createSettingsService } from './services/settings-service';
 import { createShortcutService } from './services/shortcut-service';
 import { createTrayService } from './services/tray-service';
@@ -12,6 +13,7 @@ const rendererProdHtml = path.join(__dirname, '..', '..', 'dist', 'index.html');
 const settingsService = createSettingsService({
   settingsFilePath: path.join(app.getPath('userData'), 'settings.json')
 });
+const executionReportService = createExecutionReportService();
 let currentSettings = DEFAULT_SETTINGS;
 let isQuitting = false;
 
@@ -44,11 +46,26 @@ const trayService = createTrayService({
 });
 
 void app.whenReady().then(async () => {
-  registerSettingsIpc(settingsService);
   currentSettings = await settingsService.getSettings();
 
   trayService.ensureTray();
   shortcutService.applySettings(currentSettings);
+
+  registerSettingsIpc({
+    settingsService,
+    runtimeStatusProvider: {
+      async getRuntimeStatus() {
+        const settings = await settingsService.getSettings();
+
+        return executionReportService.getRuntimeStatus({
+          ready: true,
+          platform: process.platform,
+          activeProvider: settings.provider.kind,
+          registeredShortcuts: shortcutService.getRegisteredShortcuts()
+        });
+      }
+    }
+  });
 
   const mainWindow = await windowService.ensureMainWindow();
 

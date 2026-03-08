@@ -2,12 +2,18 @@ import type { ExecutionReport } from '../../core/entities/execution-report';
 import type { TranslationRequest } from '../../core/entities/translation';
 import type { AppSettings, TranslationProviderKind } from './settings';
 
+export interface RuntimeExecutionEntry extends ExecutionReport {
+  sourceTextPreview?: string;
+  translatedTextPreview?: string;
+}
+
 export interface RuntimeStatus {
   ready: boolean;
   platform: string;
   activeProvider: TranslationProviderKind;
   registeredShortcuts: string[];
-  lastExecution: ExecutionReport | null;
+  lastExecution: RuntimeExecutionEntry | null;
+  recentExecutions: RuntimeExecutionEntry[];
 }
 
 export interface PreloadContractShape {

@@ -86,6 +86,20 @@ npm run typecheck
 - 回写优先替换或插入原控件，失败时弹窗展示并复制结果
 - 平台差异统一收敛到 `src/electron/platform/`，当前实现集中在 `src/electron/platform/win32/`
 
+## MVP 边界
+
+- 当前仓库已完成 Windows MVP 的主要结构边界：共享 DTO、provider 边界、Win32 协议适配、fallback 决策、quick/context runner，以及设置与运行状态 UI 骨架。
+- 真实 Windows 辅助进程仍为后续接入项；当前 `src/electron/platform/win32/` 通过可注入 transport/stub 保持协议与测试稳定。
+- fallback 结果页和上下文输入页已经具备页面骨架，但完整的独立弹窗交互与 IPC 回传仍需在真实窗口流中继续接线。
+- 运行状态面板默认展示已注册快捷键、当前 provider 和最近执行摘要，不保存完整原文或译文。
+
+## 当前验证状态
+
+- `npm test`：覆盖 core use case、provider boundary、win32 adapter、settings service、shortcut service、quick/context runner、fallback 决策与执行记录服务。
+- `npm run typecheck`：验证 renderer、electron、shared、core 之间的跨层类型契约。
+- `npm run build`：验证 Vite renderer 构建与 Electron TypeScript 编译产物路径。
+- Windows 真实软件兼容性检查请参考 [docs/plans/2026-03-08-windows-text-translation-compatibility-matrix.md](docs/plans/2026-03-08-windows-text-translation-compatibility-matrix.md)。
+
 详细设计见 [docs/plans/2026-03-08-windows-text-translation-client-design.md](docs/plans/2026-03-08-windows-text-translation-client-design.md)。
 
 ## 开发建议
