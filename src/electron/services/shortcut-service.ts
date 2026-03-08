@@ -6,8 +6,8 @@ export interface ShortcutRegistrar {
 }
 
 export interface ShortcutHandlers {
-  onQuickTranslate(): void;
-  onContextTranslate(): void;
+  onQuickTranslate(): void | Promise<void>;
+  onContextTranslate(): void | Promise<void>;
 }
 
 export interface ShortcutService {
@@ -27,8 +27,15 @@ export function createShortcutService({
 }: CreateShortcutServiceOptions): ShortcutService {
   let registeredShortcuts: string[] = [];
 
-  function registerShortcut(accelerator: string, callback: () => void): void {
-    if (!registrar.register(accelerator, callback)) {
+  function registerShortcut(
+    accelerator: string,
+    callback: () => void | Promise<void>
+  ): void {
+    if (
+      !registrar.register(accelerator, () => {
+        void Promise.resolve(callback());
+      })
+    ) {
       throw new Error(`Failed to register shortcut: ${accelerator}`);
     }
 

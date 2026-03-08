@@ -1,6 +1,10 @@
 import type { TranslationProvider } from '../../core/contracts';
 import type { TranslationRequest, TranslationResult } from '../../core/entities/translation';
-import type { ProviderSettings, TranslationProviderKind } from '../../shared/types/settings';
+import type {
+  AppSettings,
+  ProviderSettings,
+  TranslationProviderKind
+} from '../../shared/types/settings';
 import {
   createHttpProvider,
   type HttpProviderTransport
@@ -21,6 +25,10 @@ export class TranslationProviderError extends Error {
 
 export interface TranslationProviderService {
   translate(input: TranslateInput): Promise<TranslationResult>;
+  translateWithSettings(
+    settings: AppSettings,
+    request: TranslationRequest
+  ): Promise<TranslationResult>;
 }
 
 export interface TranslateInput {
@@ -51,6 +59,15 @@ export function createTranslationProviderService(
           error instanceof Error ? error.message : 'Unknown translation provider failure.'
         );
       }
+    },
+    translateWithSettings(
+      settings: AppSettings,
+      request: TranslationRequest
+    ): Promise<TranslationResult> {
+      return this.translate({
+        providerKind: settings.provider.kind,
+        request
+      });
     }
   };
 }

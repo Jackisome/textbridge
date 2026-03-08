@@ -1,3 +1,4 @@
+import { clipboard } from 'electron';
 import { decideCaptureFallback } from '../../core/use-cases/decide-capture-fallback';
 import { decideWriteBackFallback } from '../../core/use-cases/decide-write-back-fallback';
 import type { TextCaptureResult } from '../../core/entities/text-capture';
@@ -18,14 +19,19 @@ export interface SystemInteractionService {
     text: string,
     settings?: AppSettings
   ): Promise<WriteBackResult>;
+  copyToClipboard(text: string): Promise<void>;
 }
 
 export interface CreateSystemInteractionServiceOptions {
   adapter?: Win32Adapter;
+  clipboardWriter?: {
+    writeText(text: string): void;
+  };
 }
 
 export function createSystemInteractionService({
-  adapter = createWin32Adapter()
+  adapter = createWin32Adapter(),
+  clipboardWriter = clipboard
 }: CreateSystemInteractionServiceOptions = {}): SystemInteractionService {
   return {
     async captureSelectedText(settings?: AppSettings): Promise<TextCaptureResult> {
@@ -111,6 +117,9 @@ export function createSystemInteractionService({
         errorCode: 'WRITE_BACK_NOT_ATTEMPTED',
         errorMessage: 'No write-back attempt was executed.'
       };
+    },
+    async copyToClipboard(text: string): Promise<void> {
+      clipboardWriter.writeText(text);
     }
   };
 }
