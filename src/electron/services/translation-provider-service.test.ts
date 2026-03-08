@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { defaultTranslationClientSettings } from '../../shared/constants/default-settings';
-import { createProviderRegistry } from './providers/provider-registry';
+import { createDefaultProviderRegistry, createProviderRegistry } from './providers/provider-registry';
 import { createMockProvider } from './providers/mock-provider';
 import { createTranslationProviderService } from './translation-provider-service';
 
@@ -28,5 +28,40 @@ describe('translation provider service', () => {
     });
 
     expect(result.text).toContain('Hello world');
+  });
+
+  it('rejects empty text with a provider config error', async () => {
+    const service = createTranslationProviderService({
+      registry: createDefaultProviderRegistry()
+    });
+
+    await expect(
+      service.translateWithSettings({
+        text: '',
+        settings: defaultTranslationClientSettings
+      })
+    ).rejects.toMatchObject({
+      code: 'PROVIDER_CONFIG_ERROR'
+    });
+  });
+
+  it('exposes the available provider identifiers', () => {
+    const service = createTranslationProviderService({
+      registry: createDefaultProviderRegistry()
+    });
+
+    expect(service.getAvailableProviders()).toEqual(
+      expect.arrayContaining([
+        'claude',
+        'deepseek',
+        'minimax',
+        'gemini',
+        'google',
+        'tencent',
+        'tongyi',
+        'custom',
+        'mock'
+      ])
+    );
   });
 });

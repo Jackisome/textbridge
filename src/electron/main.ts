@@ -2,8 +2,10 @@ import { app, BrowserWindow, globalShortcut } from 'electron';
 import path from 'node:path';
 
 import { registerSettingsIpc } from './ipc/register-settings-ipc';
+import { createDefaultProviderRegistry } from './services/providers/provider-registry';
 import { createShortcutService } from './services/shortcut-service';
 import { createSettingsService } from './services/settings-service';
+import { createTranslationProviderService } from './services/translation-provider-service';
 
 const rendererDevUrl = process.env.VITE_DEV_SERVER_URL;
 const rendererProdHtml = path.join(__dirname, '..', '..', 'dist', 'index.html');
@@ -55,12 +57,19 @@ function focusMainWindow(): void {
 
 void app.whenReady().then(async () => {
   const settingsService = createSettingsService(path.join(app.getPath('userData'), 'settings.json'));
+  const providerRegistry = createDefaultProviderRegistry();
+  const translationProviderService = createTranslationProviderService({
+    registry: providerRegistry
+  });
   const shortcutService = createShortcutService(globalShortcut, {
     onQuickTranslate: focusMainWindow,
     onContextTranslate: focusMainWindow
   });
   const initialSettings = await settingsService.loadSettings();
 
+  // Initialize the shared provider service once in the main process so future IPC handlers
+  // can reuse the same registry instead of rebuilding provider instances ad hoc.
+  void translationProviderService;
   shortcutService.applySettings(initialSettings);
   registerSettingsIpc(settingsService, {
     onAfterSave: (settings) => shortcutService.applySettings(settings)

@@ -1,3 +1,4 @@
+import type { ProviderId } from '../../shared/types/provider';
 import { createProviderConfigError } from './providers/provider-errors';
 import type { ProviderRegistry } from './providers/provider-registry';
 import type { ProviderTranslationResult } from './providers/types';
@@ -5,6 +6,7 @@ import { renderPrompt } from '../../shared/utils/prompt-template';
 import type { TranslationClientSettings } from '../../shared/types/settings';
 
 export interface TranslationProviderService {
+  getAvailableProviders: () => ProviderId[];
   translateWithSettings: (input: {
     text: string;
     settings: TranslationClientSettings;
@@ -38,7 +40,14 @@ export function createTranslationProviderService(
   options: CreateTranslationProviderServiceOptions
 ): TranslationProviderService {
   return {
+    getAvailableProviders() {
+      return options.registry.list().map((provider) => provider.id);
+    },
     async translateWithSettings({ text, settings }) {
+      if (text.trim().length === 0) {
+        throw createProviderConfigError('Translation text cannot be empty.');
+      }
+
       const provider = options.registry.get(settings.activeProviderId);
 
       if (provider === undefined) {
