@@ -24,4 +24,20 @@ describe('executeContextTranslation', () => {
       outputMode: DEFAULT_SETTINGS.writeBack.outputMode
     });
   });
+
+  it('returns a structured business error when the input text is empty', () => {
+    const result = executeContextTranslation({
+      text: '',
+      instructions: 'Use concise business English.',
+      settings: DEFAULT_SETTINGS
+    });
+
+    expect(result).toEqual({
+      success: false,
+      error: {
+        code: 'EMPTY_TEXT',
+        message: 'Text to translate is required.'
+      }
+    });
+  });
 });

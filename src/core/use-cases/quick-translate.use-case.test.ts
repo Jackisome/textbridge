@@ -21,5 +21,21 @@ describe('executeQuickTranslation', () => {
       targetLanguage: DEFAULT_SETTINGS.targetLanguage,
       outputMode: DEFAULT_SETTINGS.writeBack.outputMode
     });
+    expect(result.request.outputMode).toBe('replace-original');
+  });
+
+  it('returns a structured business error when the input text is empty', () => {
+    const result = executeQuickTranslation({
+      text: '   ',
+      settings: DEFAULT_SETTINGS
+    });
+
+    expect(result).toEqual({
+      success: false,
+      error: {
+        code: 'EMPTY_TEXT',
+        message: 'Text to translate is required.'
+      }
+    });
   });
 });
