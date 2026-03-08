@@ -1,10 +1,14 @@
+import { providerMetadata, providerMetadataList } from '../../shared/constants/provider-metadata';
 import { ShortcutCaptureInput } from '../components/shortcut-capture-input';
+import { ProviderConfigPanel } from '../components/provider-config-panel';
+import { ProviderTile } from '../components/provider-tile';
 import type { ElectronInfo } from '../../shared/types/preload';
-import type { TranslationClientSettings } from '../types/settings';
+import type { ProviderId, ProviderSettingsMap, TranslationClientSettings } from '../types/settings';
 
 const navigationItems = [
   { href: '#general', label: '常规' },
   { href: '#translation', label: '翻译' },
+  { href: '#provider', label: 'Provider' },
   { href: '#shortcuts', label: '快捷键' },
   { href: '#runtime', label: '运行状态' }
 ] as const;
@@ -28,6 +32,8 @@ interface SettingsPageProps {
     key: Key,
     value: TranslationClientSettings[Key]
   ) => void;
+  onActiveProviderChange: (providerId: ProviderId) => void;
+  onProviderSettingsChange: (providerId: ProviderId, nextSettings: ProviderSettingsMap[ProviderId]) => void;
   onSave: () => void;
   onReset: () => void;
 }
@@ -60,9 +66,13 @@ export function SettingsPage({
   isSaving,
   saveMessage,
   onSettingChange,
+  onActiveProviderChange,
+  onProviderSettingsChange,
   onSave,
   onReset
 }: SettingsPageProps) {
+  const activeProviderMetadata = providerMetadata[settings.activeProviderId];
+
   return (
     <main className="settings-layout">
       <aside className="settings-sidebar">
@@ -149,7 +159,7 @@ export function SettingsPage({
           <section className="settings-card" id="translation">
             <div>
               <p className="card-kicker">翻译链路</p>
-              <h3>Provider 与语言</h3>
+              <h3>翻译偏好</h3>
             </div>
 
             <div className="field-grid">
@@ -184,19 +194,6 @@ export function SettingsPage({
               </label>
 
               <label className="field">
-                <span className="field-label">Provider</span>
-                <select
-                  value={settings.providerKind}
-                  onChange={(event) =>
-                    onSettingChange('providerKind', event.target.value as TranslationClientSettings['providerKind'])
-                  }
-                >
-                  <option value="mock">Mock Provider</option>
-                  <option value="http">HTTP Provider</option>
-                </select>
-              </label>
-
-              <label className="field">
                 <span className="field-label">输出模式</span>
                 <select
                   value={settings.outputMode}
@@ -210,47 +207,6 @@ export function SettingsPage({
               </label>
 
               <label className="field field--wide">
-                <span className="field-label">HTTP Endpoint</span>
-                <input
-                  type="url"
-                  value={settings.httpEndpoint}
-                  onChange={(event) => onSettingChange('httpEndpoint', event.target.value)}
-                  placeholder="https://api.example.com/v1/translate"
-                />
-              </label>
-
-              <label className="field">
-                <span className="field-label">模型</span>
-                <input
-                  type="text"
-                  value={settings.model}
-                  onChange={(event) => onSettingChange('model', event.target.value)}
-                  placeholder="gpt-4.1-mini"
-                />
-              </label>
-
-              <label className="field">
-                <span className="field-label">API Key</span>
-                <input
-                  type="password"
-                  value={settings.apiKey}
-                  onChange={(event) => onSettingChange('apiKey', event.target.value)}
-                  placeholder="sk-..."
-                />
-              </label>
-
-              <label className="field">
-                <span className="field-label">请求超时</span>
-                <input
-                  type="number"
-                  min={1000}
-                  step={1000}
-                  value={settings.requestTimeoutMs}
-                  onChange={(event) => onSettingChange('requestTimeoutMs', Number(event.target.value))}
-                />
-              </label>
-
-              <label className="field">
                 <span className="field-label">捕获策略</span>
                 <select
                   value={settings.captureMode}
@@ -262,6 +218,46 @@ export function SettingsPage({
                   <option value="clipboard-first">优先剪贴板</option>
                 </select>
               </label>
+            </div>
+          </section>
+
+          <section className="settings-card settings-card--provider settings-card--span-2" id="provider">
+            <div className="provider-workspace__header">
+              <div>
+                <p className="card-kicker">翻译引擎控制面板</p>
+                <h3>Provider 工作台</h3>
+              </div>
+              <div className="provider-workspace__summary">
+                <span className="provider-workspace__summary-label">当前引擎</span>
+                <strong>{activeProviderMetadata.label}</strong>
+                <span>{activeProviderMetadata.description}</span>
+              </div>
+            </div>
+
+            <div className="provider-workspace">
+              <section className="provider-selector-panel">
+                <div className="provider-selector-panel__intro">
+                  <p>
+                    先选择当前要启用的翻译引擎，再在右侧填写这一家 provider 所需的凭证、入口和提示词。
+                  </p>
+                </div>
+
+                <div className="provider-tile-grid" role="list" aria-label="可用 Provider">
+                  {providerMetadataList.map((metadata) => (
+                    <ProviderTile
+                      key={metadata.id}
+                      metadata={metadata}
+                      isActive={settings.activeProviderId === metadata.id}
+                      onSelect={() => onActiveProviderChange(metadata.id)}
+                    />
+                  ))}
+                </div>
+              </section>
+
+              <ProviderConfigPanel
+                settings={settings}
+                onProviderSettingsChange={onProviderSettingsChange}
+              />
             </div>
           </section>
 

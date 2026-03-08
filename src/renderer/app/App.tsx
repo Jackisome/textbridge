@@ -9,7 +9,7 @@ import {
   loadPersistedSettings,
   savePersistedSettings
 } from '../services/settings-storage';
-import type { TranslationClientSettings } from '../types/settings';
+import type { ProviderId, ProviderSettingsMap, TranslationClientSettings } from '../types/settings';
 
 interface AppState {
   settings: TranslationClientSettings;
@@ -77,6 +77,34 @@ export default function App() {
     }));
   }
 
+  function handleActiveProviderChange(providerId: ProviderId) {
+    setAppState((previousState) => ({
+      ...previousState,
+      saveMessage: null,
+      settings: {
+        ...previousState.settings,
+        activeProviderId: providerId
+      }
+    }));
+  }
+
+  function handleProviderSettingsChange(
+    providerId: ProviderId,
+    nextSettings: ProviderSettingsMap[ProviderId]
+  ) {
+    setAppState((previousState) => ({
+      ...previousState,
+      saveMessage: null,
+      settings: {
+        ...previousState.settings,
+        providers: {
+          ...previousState.settings.providers,
+          [providerId]: nextSettings
+        }
+      }
+    }));
+  }
+
   async function handleSave() {
     setAppState((previousState) => ({
       ...previousState,
@@ -110,6 +138,8 @@ export default function App() {
       isSaving={appState.isSaving}
       saveMessage={appState.saveMessage}
       settings={appState.settings}
+      onActiveProviderChange={handleActiveProviderChange}
+      onProviderSettingsChange={handleProviderSettingsChange}
       onReset={handleReset}
       onSave={() => {
         void handleSave();
