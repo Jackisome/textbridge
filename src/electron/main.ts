@@ -2,10 +2,18 @@ import { app, globalShortcut } from 'electron';
 import path from 'node:path';
 import { DEFAULT_SETTINGS } from '../shared/constants/default-settings';
 import { registerSettingsIpc } from './ipc/register-settings-ipc';
+import { createWin32Adapter } from './platform/win32/adapter';
+import { createWin32HelperSessionService } from './platform/win32/helper-session-service';
+import { createContextTranslationRunner } from './services/context-translation-runner';
+import { createDiagnosticLogService } from './services/diagnostic-log-service';
 import { createExecutionReportService } from './services/execution-report-service';
+import { createPopupService } from './services/popup-service';
+import { createQuickTranslationRunner } from './services/quick-translation-runner';
 import { createSettingsService } from './services/settings-service';
 import { createShortcutService } from './services/shortcut-service';
+import { createSystemInteractionService } from './services/system-interaction-service';
 import { createTrayService } from './services/tray-service';
+import { createTranslationProviderService } from './services/translation-provider-service';
 import { createWindowService } from './services/window-service';
 
 const rendererDevUrl = process.env.VITE_DEV_SERVER_URL;
@@ -16,6 +24,18 @@ const settingsService = createSettingsService({
 const executionReportService = createExecutionReportService();
 let currentSettings = DEFAULT_SETTINGS;
 let isQuitting = false;
+let helperSessionService:
+  | ReturnType<typeof createWin32HelperSessionService>
+  | null = null;
+let quickTranslationRunner:
+  | ReturnType<typeof createQuickTranslationRunner>
+  | null = null;
+let contextTranslationRunner:
+  | ReturnType<typeof createContextTranslationRunner>
+  | null = null;
+let diagnosticLogService:
+  | ReturnType<typeof createDiagnosticLogService>
+  | null = null;
 
 const windowService = createWindowService({
   rendererDevUrl,
@@ -28,10 +48,24 @@ const shortcutService = createShortcutService({
   registrar: globalShortcut,
   handlers: {
     onQuickTranslate() {
-      void windowService.showMainWindow();
+      if (!quickTranslationRunner) {
+        void windowService.showMainWindow();
+        return;
+      }
+
+      void quickTranslationRunner.run().catch((error) => {
+        void handleRunnerFailure('quick-translation', error);
+      });
     },
     onContextTranslate() {
-      void windowService.showMainWindow();
+      if (!contextTranslationRunner) {
+        void windowService.showMainWindow();
+        return;
+      }
+
+      void contextTranslationRunner.run().catch((error) => {
+        void handleRunnerFailure('context-translation', error);
+      });
     }
   }
 });
@@ -47,21 +81,88 @@ const trayService = createTrayService({
 
 void app.whenReady().then(async () => {
   currentSettings = await settingsService.getSettings();
+  diagnosticLogService = createDiagnosticLogService({
+    isPackaged: app.isPackaged,
+    baseDirectoryPath: app.getPath('userData')
+  });
+
+  helperSessionService = createWin32HelperSessionService({
+    isPackaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+    logger: diagnosticLogService
+  });
+
+  const systemInteractionService = createSystemInteractionService({
+    adapter: createWin32Adapter({
+      helperSession: helperSessionService
+    })
+  });
+  const translationProviderService = {
+    translateWithSettings(settings: typeof currentSettings, request: Parameters<
+      ReturnType<typeof createTranslationProviderService>['translateWithSettings']
+    >[1]) {
+      return createTranslationProviderService({
+        httpProviderSettings: settings.provider
+      }).translateWithSettings(settings, request);
+    }
+  };
+  const popupService = createPopupService({
+    async requestContextInstructions() {
+      await diagnosticLogService?.warn(
+        'Context instructions UI is not implemented yet; proceeding without extra instructions.'
+      );
+      return '';
+    },
+    async showFallbackResult() {
+      await windowService.showMainWindow();
+    },
+    async showSettings() {
+      await windowService.showMainWindow();
+    }
+  });
+
+  quickTranslationRunner = createQuickTranslationRunner({
+    settingsService,
+    systemInteractionService,
+    translationProviderService,
+    popupFallbackPresenter: {
+      showResult(payload) {
+        return popupService.showFallbackResult(payload);
+      }
+    },
+    reportRecorder: executionReportService
+  });
+
+  contextTranslationRunner = createContextTranslationRunner({
+    settingsService,
+    systemInteractionService,
+    translationProviderService,
+    popupService,
+    reportRecorder: executionReportService
+  });
 
   trayService.ensureTray();
   shortcutService.applySettings(currentSettings);
 
   registerSettingsIpc({
     settingsService,
+    async onSettingsSaved(savedSettings) {
+      currentSettings = savedSettings;
+      shortcutService.applySettings(savedSettings);
+      await diagnosticLogService?.info('Settings saved and shortcuts reapplied.');
+    },
     runtimeStatusProvider: {
       async getRuntimeStatus() {
-        const settings = await settingsService.getSettings();
+        const helperSnapshot = helperSessionService?.getSnapshot();
 
         return executionReportService.getRuntimeStatus({
           ready: true,
           platform: process.platform,
-          activeProvider: settings.provider.kind,
-          registeredShortcuts: shortcutService.getRegisteredShortcuts()
+          activeProvider: currentSettings.provider.kind,
+          registeredShortcuts: shortcutService.getRegisteredShortcuts(),
+          helperState: helperSnapshot?.helperState,
+          helperLastErrorCode: helperSnapshot?.helperLastErrorCode,
+          helperPid: helperSnapshot?.helperPid
         });
       }
     }
@@ -83,6 +184,19 @@ app.on('before-quit', () => {
 });
 
 app.on('will-quit', () => {
+  void helperSessionService?.dispose();
   shortcutService.dispose();
   trayService.dispose();
 });
+
+async function handleRunnerFailure(
+  workflow: 'quick-translation' | 'context-translation',
+  error: unknown
+): Promise<void> {
+  await diagnosticLogService?.error(
+    error instanceof Error
+      ? `${workflow} failed: ${error.message}`
+      : `${workflow} failed with a non-error value.`
+  );
+  await windowService.showMainWindow();
+}
