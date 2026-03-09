@@ -8,6 +8,7 @@
     "build:renderer": "vite build",
     "build:electron": "tsc -p tsconfig.electron.json",
     "test": "vitest run",
+    "test:minimax-live": "vitest run src/electron/services/providers/minimax-provider.integration.test.ts",
     "test:watch": "vitest",
     "typecheck": "npm run typecheck:renderer && npm run typecheck:electron",
     "typecheck:renderer": "tsc -p tsconfig.json --noEmit",

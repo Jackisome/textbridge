@@ -50,8 +50,26 @@ describe('createMinimaxProvider', () => {
     });
 
     const url = String(fetchMock.mock.calls[0]?.[0]);
+    const request = fetchMock.mock.calls[0]?.[1];
+    const body = JSON.parse(String(request?.body));
+    const headers = request?.headers as Record<string, string>;
 
-    expect(url).toContain('/v1/text/chatcompletion_v2');
+    expect(url).toBe('https://api.minimaxi.com/v1/text/chatcompletion_v2');
+    expect(headers.authorization).toBe('Bearer minimax-key');
+    expect(body.model).toBe('MiniMax-Text-01');
+    expect(body.messages).toEqual([
+      {
+        role: 'system',
+        name: 'MiniMax AI',
+        content: 'system'
+      },
+      {
+        role: 'user',
+        name: 'User',
+        content: 'Translate Hello world to zh-CN'
+      }
+    ]);
+    expect(body.temperature).toBeUndefined();
     expect(result.text).toBe('MiniMax output');
   });
 });

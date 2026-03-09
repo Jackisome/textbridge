@@ -40,7 +40,7 @@ export const defaultTranslationClientSettings: TranslationClientSettings = {
     minimax: {
       apiKey: '',
       model: 'MiniMax-Text-01',
-      baseUrl: 'https://api.minimax.chat/v1/text/chatcompletion_v2',
+      baseUrl: 'https://api.minimaxi.com/v1/text/chatcompletion_v2',
       systemPrompt: defaultSystemPrompt,
       userPromptTemplate: defaultUserPromptTemplate,
       timeoutMs: 20000
