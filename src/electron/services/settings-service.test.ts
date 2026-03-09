@@ -46,4 +46,14 @@ describe('createSettingsService', () => {
     await expect(settingsService.saveSettings(savedSettings)).resolves.toEqual(savedSettings);
     await expect(settingsService.getSettings()).resolves.toEqual(savedSettings);
   });
+
+  it('returns idle helper defaults in runtime status', async () => {
+    const settingsService = await createService();
+
+    await expect(settingsService.getRuntimeStatus()).resolves.toMatchObject({
+      helperState: 'idle',
+      helperLastErrorCode: null,
+      helperPid: null
+    });
+  });
 });

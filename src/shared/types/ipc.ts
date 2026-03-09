@@ -7,11 +7,21 @@ export interface RuntimeExecutionEntry extends ExecutionReport {
   translatedTextPreview?: string;
 }
 
+export type RuntimeHelperState =
+  | 'idle'
+  | 'starting'
+  | 'ready'
+  | 'degraded'
+  | 'stopped';
+
 export interface RuntimeStatus {
   ready: boolean;
   platform: string;
   activeProvider: TranslationProviderKind;
   registeredShortcuts: string[];
+  helperState: RuntimeHelperState;
+  helperLastErrorCode: string | null;
+  helperPid: number | null;
   lastExecution: RuntimeExecutionEntry | null;
   recentExecutions: RuntimeExecutionEntry[];
 }

@@ -60,7 +60,10 @@ describe('createExecutionReportService', () => {
       ready: true,
       platform: 'win32',
       activeProvider: 'http',
-      registeredShortcuts: ['CommandOrControl+Shift+1', 'CommandOrControl+Shift+2']
+      registeredShortcuts: ['CommandOrControl+Shift+1', 'CommandOrControl+Shift+2'],
+      helperState: 'degraded',
+      helperLastErrorCode: 'HELPER_TIMEOUT',
+      helperPid: 2048
     });
 
     expect(runtimeStatus.recentExecutions.map((entry) => entry.id)).toEqual([
@@ -75,5 +78,23 @@ describe('createExecutionReportService', () => {
       entry.sourceTextPreview ===
       'This is a confidential original paragraph that must never be stored in full.'
     )).toBe(false);
+    expect(runtimeStatus.helperState).toBe('degraded');
+    expect(runtimeStatus.helperLastErrorCode).toBe('HELPER_TIMEOUT');
+    expect(runtimeStatus.helperPid).toBe(2048);
+  });
+
+  it('defaults helper runtime snapshot to idle and null values when omitted', () => {
+    const service = createExecutionReportService();
+
+    const runtimeStatus = service.getRuntimeStatus({
+      ready: false,
+      platform: 'win32',
+      activeProvider: 'mock',
+      registeredShortcuts: []
+    });
+
+    expect(runtimeStatus.helperState).toBe('idle');
+    expect(runtimeStatus.helperLastErrorCode).toBeNull();
+    expect(runtimeStatus.helperPid).toBeNull();
   });
 });

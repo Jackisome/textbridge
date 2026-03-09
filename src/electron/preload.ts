@@ -19,6 +19,9 @@ const runtimeStatus: RuntimeStatus = {
   platform: process.platform,
   activeProvider: DEFAULT_SETTINGS.provider.kind,
   registeredShortcuts: [],
+  helperState: 'idle',
+  helperLastErrorCode: null,
+  helperPid: null,
   lastExecution: null,
   recentExecutions: []
 };

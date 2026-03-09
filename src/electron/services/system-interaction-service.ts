@@ -23,7 +23,8 @@ export interface SystemInteractionService {
 }
 
 export interface CreateSystemInteractionServiceOptions {
-  adapter?: Win32Adapter;
+  adapter?: Pick<Win32Adapter, 'captureText' | 'writeText'> &
+    Partial<Pick<Win32Adapter, 'copyToClipboard'>>;
   clipboardWriter?: {
     writeText(text: string): void;
   };
@@ -119,6 +120,15 @@ export function createSystemInteractionService({
       };
     },
     async copyToClipboard(text: string): Promise<void> {
+      if (typeof adapter.copyToClipboard === 'function') {
+        try {
+          await adapter.copyToClipboard(text);
+          return;
+        } catch {
+          // Fall back to Electron clipboard when the helper bridge is unavailable.
+        }
+      }
+
       clipboardWriter.writeText(text);
     }
   };

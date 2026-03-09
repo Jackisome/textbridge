@@ -57,6 +57,9 @@ export function createSettingsService({
         settings.shortcuts.quickTranslate,
         settings.shortcuts.contextTranslate
       ],
+      helperState: 'idle',
+      helperLastErrorCode: null,
+      helperPid: null,
       lastExecution: null,
       recentExecutions: []
     };

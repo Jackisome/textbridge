@@ -1,5 +1,9 @@
 import type { ExecutionReport } from '../../core/entities/execution-report';
-import type { RuntimeExecutionEntry, RuntimeStatus } from '../../shared/types/ipc';
+import type {
+  RuntimeExecutionEntry,
+  RuntimeHelperState,
+  RuntimeStatus
+} from '../../shared/types/ipc';
 import type { TranslationProviderKind } from '../../shared/types/settings';
 
 export interface ExecutionReportContext {
@@ -16,6 +20,9 @@ export interface ExecutionReportRuntimeStatusInput {
   platform: string;
   activeProvider: TranslationProviderKind;
   registeredShortcuts: string[];
+  helperState?: RuntimeHelperState;
+  helperLastErrorCode?: string | null;
+  helperPid?: number | null;
 }
 
 export interface ExecutionReportService {
@@ -43,6 +50,9 @@ export function createExecutionReportService({
         platform: input.platform,
         activeProvider: input.activeProvider,
         registeredShortcuts: [...input.registeredShortcuts],
+        helperState: input.helperState ?? 'idle',
+        helperLastErrorCode: input.helperLastErrorCode ?? null,
+        helperPid: input.helperPid ?? null,
         lastExecution: recentExecutions[0] ?? null,
         recentExecutions: [...recentExecutions]
       };
