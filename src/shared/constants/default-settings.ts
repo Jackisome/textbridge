@@ -82,3 +82,5 @@ export const defaultTranslationClientSettings: TranslationClientSettings = {
     }
   }
 };
+
+export const DEFAULT_SETTINGS = defaultTranslationClientSettings;

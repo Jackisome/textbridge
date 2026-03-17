@@ -2,6 +2,8 @@ import { providerMetadata, providerMetadataList } from '../../shared/constants/p
 import { ShortcutCaptureInput } from '../components/shortcut-capture-input';
 import { ProviderConfigPanel } from '../components/provider-config-panel';
 import { ProviderTile } from '../components/provider-tile';
+import { RuntimeStatusPanel } from '../features/runtime-status/runtime-status-panel';
+import type { RuntimeStatus } from '../../shared/types/ipc';
 import type { ElectronInfo } from '../../shared/types/preload';
 import type { ProviderId, ProviderSettingsMap, TranslationClientSettings } from '../types/settings';
 
@@ -28,6 +30,7 @@ interface SettingsPageProps {
   isLoading: boolean;
   isSaving: boolean;
   saveMessage: string | null;
+  runtimeStatus: RuntimeStatus | null;
   onSettingChange: <Key extends keyof TranslationClientSettings>(
     key: Key,
     value: TranslationClientSettings[Key]
@@ -65,6 +68,7 @@ export function SettingsPage({
   isLoading,
   isSaving,
   saveMessage,
+  runtimeStatus,
   onSettingChange,
   onActiveProviderChange,
   onProviderSettingsChange,
@@ -282,35 +286,10 @@ export function SettingsPage({
             </div>
           </section>
 
-          <section className="settings-card settings-card--accent" id="runtime">
-            <div>
-              <p className="card-kicker">桌面环境</p>
-              <h3>运行状态</h3>
-            </div>
-
-            <div className="runtime-grid">
-              <article>
-                <span>Electron</span>
-                <strong>{electronInfo.electron}</strong>
-              </article>
-              <article>
-                <span>Node.js</span>
-                <strong>{electronInfo.node}</strong>
-              </article>
-              <article>
-                <span>Chromium</span>
-                <strong>{electronInfo.chrome}</strong>
-              </article>
-              <article>
-                <span>Platform</span>
-                <strong>{electronInfo.platform}</strong>
-              </article>
-            </div>
-
-            <p className="runtime-note">
-              设置现在会通过 preload 暴露的稳定接口落到主进程 JSON 配置文件，快捷键录制体验也会随之持久化。
-            </p>
-          </section>
+          <RuntimeStatusPanel
+            electronInfo={electronInfo}
+            runtimeStatus={runtimeStatus}
+          />
         </div>
       </div>
     </main>

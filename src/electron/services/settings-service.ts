@@ -228,13 +228,22 @@ function normalizeSettings(candidate: unknown): TranslationClientSettings {
 
 export interface SettingsService {
   loadSettings: () => Promise<TranslationClientSettings>;
-  saveSettings: (settings: TranslationClientSettings) => Promise<void>;
+  getSettings: () => Promise<TranslationClientSettings>;
+  saveSettings: (settings: TranslationClientSettings) => Promise<TranslationClientSettings>;
 }
 
-export function createSettingsService(configFilePath: string): SettingsService {
+export interface CreateSettingsServiceOptions {
+  settingsFilePath: string;
+}
+
+export function createSettingsService(
+  config: string | CreateSettingsServiceOptions
+): SettingsService {
+  const settingsFilePath = typeof config === 'string' ? config : config.settingsFilePath;
+
   async function loadSettings(): Promise<TranslationClientSettings> {
     try {
-      const rawContent = await fs.readFile(configFilePath, 'utf8');
+      const rawContent = await fs.readFile(settingsFilePath, 'utf8');
 
       return normalizeSettings(JSON.parse(rawContent) as unknown);
     } catch {
@@ -242,15 +251,24 @@ export function createSettingsService(configFilePath: string): SettingsService {
     }
   }
 
-  async function saveSettings(settings: TranslationClientSettings): Promise<void> {
+  async function saveSettings(
+    settings: TranslationClientSettings
+  ): Promise<TranslationClientSettings> {
     const normalizedSettings = normalizeSettings(settings);
 
-    await fs.mkdir(path.dirname(configFilePath), { recursive: true });
-    await fs.writeFile(configFilePath, JSON.stringify(normalizedSettings, null, 2), 'utf8');
+    await fs.mkdir(path.dirname(settingsFilePath), { recursive: true });
+    await fs.writeFile(
+      settingsFilePath,
+      `${JSON.stringify(normalizedSettings, null, 2)}\n`,
+      'utf8'
+    );
+
+    return normalizedSettings;
   }
 
   return {
     loadSettings,
+    getSettings: loadSettings,
     saveSettings
   };
 }

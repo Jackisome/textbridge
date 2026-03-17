@@ -27,7 +27,7 @@ describe('translation provider service', () => {
       }
     });
 
-    expect(result.text).toContain('Hello world');
+    expect(result.translatedText).toContain('Hello world');
   });
 
   it('rejects empty text with a provider config error', async () => {

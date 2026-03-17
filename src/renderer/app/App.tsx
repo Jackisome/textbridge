@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
 
 import { defaultTranslationClientSettings } from '../../shared/constants/default-settings';
+import type { RuntimeStatus } from '../../shared/types/ipc';
 import type { ElectronInfo } from '../../shared/types/preload';
+import { ContextPopupPage } from '../pages/context-popup-page';
+import { FallbackResultPage } from '../pages/fallback-result-page';
 import { SettingsPage } from '../pages/settings-page';
 import {
   areSettingsEqual,
@@ -38,17 +41,25 @@ function createInitialState(): AppState {
 
 export default function App() {
   const [appState, setAppState] = useState<AppState>(createInitialState);
+  const [runtimeStatus, setRuntimeStatus] = useState<RuntimeStatus | null>(null);
   const electronInfo = window.electronInfo ?? fallbackElectronInfo;
+  const view = new URLSearchParams(window.location.search).get('view');
   const isDirty = !areSettingsEqual(appState.settings, appState.savedSettings);
 
   useEffect(() => {
     let disposed = false;
 
-    void loadPersistedSettings().then((persistedSettings) => {
+    const loadState = async () => {
+      const [persistedSettings, latestRuntimeStatus] = await Promise.all([
+        loadPersistedSettings(),
+        window.textBridge.getRuntimeStatus().catch(() => null)
+      ]);
+
       if (disposed) {
         return;
       }
 
+      setRuntimeStatus(latestRuntimeStatus);
       setAppState({
         settings: cloneSettings(persistedSettings),
         savedSettings: cloneSettings(persistedSettings),
@@ -56,12 +67,44 @@ export default function App() {
         isSaving: false,
         saveMessage: '配置已从本地磁盘载入。'
       });
-    });
+    };
+
+    void loadState();
+
+    if (!import.meta.env.DEV) {
+      return () => {
+        disposed = true;
+      };
+    }
+
+    const intervalId = window.setInterval(() => {
+      void window.textBridge.getRuntimeStatus().then((latestRuntimeStatus) => {
+        if (!disposed) {
+          setRuntimeStatus(latestRuntimeStatus);
+        }
+      });
+    }, 2000);
 
     return () => {
       disposed = true;
+      window.clearInterval(intervalId);
     };
   }, []);
+
+  if (view === 'context-popup') {
+    return (
+      <ContextPopupPage
+        sourceText={
+          window.textBridgeContracts?.draftRequest?.text ??
+          'Paste or capture text before submitting extra translation instructions.'
+        }
+      />
+    );
+  }
+
+  if (view === 'fallback-result') {
+    return <FallbackResultPage />;
+  }
 
   function handleSettingChange<Key extends keyof TranslationClientSettings>(
     key: Key,
@@ -113,7 +156,9 @@ export default function App() {
     }));
 
     await savePersistedSettings(cloneSettings(appState.settings));
+    const latestRuntimeStatus = await window.textBridge.getRuntimeStatus().catch(() => null);
 
+    setRuntimeStatus(latestRuntimeStatus);
     setAppState((previousState) => ({
       ...previousState,
       isSaving: false,
@@ -137,6 +182,7 @@ export default function App() {
       isLoading={appState.isLoading}
       isSaving={appState.isSaving}
       saveMessage={appState.saveMessage}
+      runtimeStatus={runtimeStatus}
       settings={appState.settings}
       onActiveProviderChange={handleActiveProviderChange}
       onProviderSettingsChange={handleProviderSettingsChange}

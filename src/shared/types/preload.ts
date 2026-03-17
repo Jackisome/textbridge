@@ -1,3 +1,4 @@
+import type { RuntimeStatus } from './ipc';
 import type { TranslationClientSettings } from './settings';
 
 export interface ElectronInfo {
@@ -9,5 +10,6 @@ export interface ElectronInfo {
 
 export interface TextBridgeApi {
   getSettings: () => Promise<TranslationClientSettings>;
-  saveSettings: (settings: TranslationClientSettings) => Promise<void>;
+  saveSettings: (settings: TranslationClientSettings) => Promise<TranslationClientSettings>;
+  getRuntimeStatus: () => Promise<RuntimeStatus>;
 }

@@ -5,8 +5,21 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 
 import { defaultTranslationClientSettings } from '../../shared/constants/default-settings';
+import type { RuntimeStatus } from '../../shared/types/ipc';
 import type { TranslationClientSettings } from '../types/settings';
 import { SettingsPage } from './settings-page';
+
+const runtimeStatus: RuntimeStatus = {
+  ready: true,
+  platform: 'win32',
+  activeProvider: 'mock',
+  registeredShortcuts: ['CommandOrControl+Shift+K', 'CommandOrControl+Shift+L'],
+  helperState: 'ready',
+  helperLastErrorCode: null,
+  helperPid: 4321,
+  lastExecution: null,
+  recentExecutions: []
+};
 
 function SettingsPageHarness() {
   const [settings, setSettings] = useState<TranslationClientSettings>(defaultTranslationClientSettings);
@@ -24,6 +37,7 @@ function SettingsPageHarness() {
       isLoading={false}
       isSaving={false}
       saveMessage={null}
+      runtimeStatus={runtimeStatus}
       onSave={() => {}}
       onReset={() => {}}
       onSettingChange={(key, value) => {

@@ -1,7 +1,7 @@
 import type { ProviderId, ProviderSettingsMap } from './provider';
 
+export type TranslationProviderKind = ProviderId;
 export type OutputMode = 'replace-original' | 'show-popup';
-
 export type CaptureMode = 'uia-first' | 'clipboard-first';
 
 export interface TranslationClientSettings {

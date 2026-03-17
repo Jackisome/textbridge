@@ -1,16 +1,22 @@
 import type { ProviderId } from '../../shared/types/provider';
+import type { TranslationRequest, TranslationResult } from '../../core/entities/translation';
 import { createProviderConfigError } from './providers/provider-errors';
 import type { ProviderRegistry } from './providers/provider-registry';
-import type { ProviderTranslationResult } from './providers/types';
 import { renderPrompt } from '../../shared/utils/prompt-template';
 import type { TranslationClientSettings } from '../../shared/types/settings';
 
 export interface TranslationProviderService {
   getAvailableProviders: () => ProviderId[];
-  translateWithSettings: (input: {
-    text: string;
-    settings: TranslationClientSettings;
-  }) => Promise<ProviderTranslationResult>;
+  translateWithSettings: {
+    (input: {
+      text: string;
+      settings: TranslationClientSettings;
+    }): Promise<TranslationResult>;
+    (
+      settings: TranslationClientSettings,
+      request: TranslationRequest
+    ): Promise<TranslationResult>;
+  };
 }
 
 interface CreateTranslationProviderServiceOptions {
@@ -18,53 +24,106 @@ interface CreateTranslationProviderServiceOptions {
   fetch?: typeof globalThis.fetch;
 }
 
-function buildPrompt(settings: TranslationClientSettings, text: string) {
+function buildPrompt(
+  settings: TranslationClientSettings,
+  request: Pick<TranslationRequest, 'text' | 'instructions' | 'targetLanguage'>
+) {
   const providerSettings = settings.providers[settings.activeProviderId];
 
   if ('userPromptTemplate' in providerSettings) {
+    const baseUserPrompt = renderPrompt(providerSettings.userPromptTemplate, {
+      origin: request.text,
+      to: request.targetLanguage
+    });
+
     return {
       system: 'systemPrompt' in providerSettings ? providerSettings.systemPrompt : undefined,
-      user: renderPrompt(providerSettings.userPromptTemplate, {
-        origin: text,
-        to: settings.targetLanguage
-      })
+      user:
+        request.instructions === undefined
+          ? baseUserPrompt
+          : `${baseUserPrompt}\n\nAdditional instructions:\n${request.instructions}`
     };
   }
 
   return {
-    user: text
+    user:
+      request.instructions === undefined
+        ? request.text
+        : `${request.text}\n\nAdditional instructions:\n${request.instructions}`
   };
 }
 
 export function createTranslationProviderService(
   options: CreateTranslationProviderServiceOptions
 ): TranslationProviderService {
+  async function translateWithNormalizedRequest(
+    settings: TranslationClientSettings,
+    request: TranslationRequest
+  ): Promise<TranslationResult> {
+    if (request.text.trim().length === 0) {
+      throw createProviderConfigError('Translation text cannot be empty.');
+    }
+
+    const provider = options.registry.get(settings.activeProviderId);
+
+    if (provider === undefined) {
+      throw createProviderConfigError(
+        `Provider "${settings.activeProviderId}" is not registered.`
+      );
+    }
+
+    const controller = new AbortController();
+    const providerResult = await provider.translate({
+      providerId: settings.activeProviderId,
+      text: request.text,
+      sourceLanguage: request.sourceLanguage,
+      targetLanguage: request.targetLanguage,
+      providerSettings: settings.providers[settings.activeProviderId],
+      prompt: buildPrompt(settings, request),
+      signal: controller.signal,
+      fetch: options.fetch ?? globalThis.fetch
+    });
+
+    return {
+      translatedText: providerResult.text,
+      sourceLanguage: request.sourceLanguage,
+      targetLanguage: request.targetLanguage,
+      detectedSourceLanguage: providerResult.detectedSourceLanguage,
+      provider: settings.activeProviderId
+    };
+  }
+
   return {
     getAvailableProviders() {
       return options.registry.list().map((provider) => provider.id);
     },
-    async translateWithSettings({ text, settings }) {
-      if (text.trim().length === 0) {
-        throw createProviderConfigError('Translation text cannot be empty.');
+    async translateWithSettings(
+      inputOrSettings:
+        | {
+            text: string;
+            settings: TranslationClientSettings;
+          }
+        | TranslationClientSettings,
+      maybeRequest?: TranslationRequest
+    ) {
+      if (maybeRequest !== undefined) {
+        return translateWithNormalizedRequest(
+          inputOrSettings as TranslationClientSettings,
+          maybeRequest
+        );
       }
 
-      const provider = options.registry.get(settings.activeProviderId);
-
-      if (provider === undefined) {
-        throw createProviderConfigError(`Provider "${settings.activeProviderId}" is not registered.`);
+      if (!('settings' in inputOrSettings)) {
+        throw createProviderConfigError('A translation request is required.');
       }
 
-      const controller = new AbortController();
+      const { settings, text } = inputOrSettings;
 
-      return provider.translate({
-        providerId: settings.activeProviderId,
+      return translateWithNormalizedRequest(settings, {
         text,
         sourceLanguage: settings.sourceLanguage,
         targetLanguage: settings.targetLanguage,
-        providerSettings: settings.providers[settings.activeProviderId],
-        prompt: buildPrompt(settings, text),
-        signal: controller.signal,
-        fetch: options.fetch ?? globalThis.fetch
+        outputMode: settings.outputMode
       });
     }
   };

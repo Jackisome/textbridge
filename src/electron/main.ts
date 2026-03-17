@@ -1,94 +1,197 @@
-import { app, BrowserWindow, globalShortcut } from 'electron';
+import { app, globalShortcut } from 'electron';
 import path from 'node:path';
-
+import { DEFAULT_SETTINGS } from '../shared/constants/default-settings';
 import { registerSettingsIpc } from './ipc/register-settings-ipc';
 import { createDefaultProviderRegistry } from './services/providers/provider-registry';
-import { createShortcutService } from './services/shortcut-service';
+import { createWin32Adapter } from './platform/win32/adapter';
+import { createWin32HelperSessionService } from './platform/win32/helper-session-service';
+import { createContextTranslationRunner } from './services/context-translation-runner';
+import { createDiagnosticLogService } from './services/diagnostic-log-service';
+import { createExecutionReportService } from './services/execution-report-service';
+import { createPopupService } from './services/popup-service';
+import { createQuickTranslationRunner } from './services/quick-translation-runner';
 import { createSettingsService } from './services/settings-service';
+import { createShortcutService } from './services/shortcut-service';
+import { createSystemInteractionService } from './services/system-interaction-service';
+import { createTrayService } from './services/tray-service';
 import { createTranslationProviderService } from './services/translation-provider-service';
+import { createWindowService } from './services/window-service';
 
 const rendererDevUrl = process.env.VITE_DEV_SERVER_URL;
 const rendererProdHtml = path.join(__dirname, '..', '..', 'dist', 'index.html');
-let mainWindow: BrowserWindow | null = null;
+const settingsService = createSettingsService({
+  settingsFilePath: path.join(app.getPath('userData'), 'settings.json')
+});
+const executionReportService = createExecutionReportService();
+let currentSettings = DEFAULT_SETTINGS;
+let isQuitting = false;
+let helperSessionService:
+  | ReturnType<typeof createWin32HelperSessionService>
+  | null = null;
+let quickTranslationRunner:
+  | ReturnType<typeof createQuickTranslationRunner>
+  | null = null;
+let contextTranslationRunner:
+  | ReturnType<typeof createContextTranslationRunner>
+  | null = null;
+let diagnosticLogService:
+  | ReturnType<typeof createDiagnosticLogService>
+  | null = null;
 
-async function createWindow(): Promise<void> {
-  mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 840,
-    minWidth: 960,
-    minHeight: 640,
-    backgroundColor: '#0f172a',
-    autoHideMenuBar: true,
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: false
+const windowService = createWindowService({
+  rendererDevUrl,
+  rendererProdHtml,
+  preloadPath: path.join(__dirname, 'preload.js'),
+  shouldHideOnClose: () => !isQuitting && currentSettings.closeToTray
+});
+
+const shortcutService = createShortcutService({
+  registrar: globalShortcut,
+  handlers: {
+    onQuickTranslate() {
+      if (!quickTranslationRunner) {
+        void windowService.showMainWindow();
+        return;
+      }
+
+      void quickTranslationRunner.run().catch((error) => {
+        void handleRunnerFailure('quick-translation', error);
+      });
+    },
+    onContextTranslate() {
+      if (!contextTranslationRunner) {
+        void windowService.showMainWindow();
+        return;
+      }
+
+      void contextTranslationRunner.run().catch((error) => {
+        void handleRunnerFailure('context-translation', error);
+      });
     }
-  });
-
-  mainWindow.on('closed', () => {
-    mainWindow = null;
-  });
-
-  if (rendererDevUrl) {
-    await mainWindow.loadURL(rendererDevUrl);
-    return;
   }
+});
 
-  await mainWindow.loadFile(rendererProdHtml);
-}
-
-function focusMainWindow(): void {
-  if (mainWindow === null || mainWindow.isDestroyed()) {
-    return;
+const trayService = createTrayService({
+  onOpenSettings() {
+    void windowService.showMainWindow();
+  },
+  onExit() {
+    isQuitting = true;
   }
-
-  if (mainWindow.isMinimized()) {
-    mainWindow.restore();
-  }
-
-  if (!mainWindow.isVisible()) {
-    mainWindow.show();
-  }
-
-  mainWindow.focus();
-}
+});
 
 void app.whenReady().then(async () => {
-  const settingsService = createSettingsService(path.join(app.getPath('userData'), 'settings.json'));
-  const providerRegistry = createDefaultProviderRegistry();
+  currentSettings = await settingsService.getSettings();
+  diagnosticLogService = createDiagnosticLogService({
+    isPackaged: app.isPackaged,
+    baseDirectoryPath: app.getPath('userData')
+  });
+
+  helperSessionService = createWin32HelperSessionService({
+    isPackaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+    logger: diagnosticLogService
+  });
+
+  const systemInteractionService = createSystemInteractionService({
+    adapter: createWin32Adapter({
+      helperSession: helperSessionService
+    })
+  });
   const translationProviderService = createTranslationProviderService({
-    registry: providerRegistry
+    registry: createDefaultProviderRegistry()
   });
-  const shortcutService = createShortcutService(globalShortcut, {
-    onQuickTranslate: focusMainWindow,
-    onContextTranslate: focusMainWindow
-  });
-  const initialSettings = await settingsService.loadSettings();
-
-  // Initialize the shared provider service once in the main process so future IPC handlers
-  // can reuse the same registry instead of rebuilding provider instances ad hoc.
-  void translationProviderService;
-  shortcutService.applySettings(initialSettings);
-  registerSettingsIpc(settingsService, {
-    onAfterSave: (settings) => shortcutService.applySettings(settings)
-  });
-  void createWindow();
-
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      void createWindow();
+  const popupService = createPopupService({
+    async requestContextInstructions() {
+      await diagnosticLogService?.warn(
+        'Context instructions UI is not implemented yet; proceeding without extra instructions.'
+      );
+      return '';
+    },
+    async showFallbackResult() {
+      await windowService.showMainWindow();
+    },
+    async showSettings() {
+      await windowService.showMainWindow();
     }
   });
 
-  app.on('will-quit', () => {
-    shortcutService.dispose();
+  quickTranslationRunner = createQuickTranslationRunner({
+    settingsService,
+    systemInteractionService,
+    translationProviderService,
+    popupFallbackPresenter: {
+      showResult(payload) {
+        return popupService.showFallbackResult(payload);
+      }
+    },
+    reportRecorder: executionReportService
+  });
+
+  contextTranslationRunner = createContextTranslationRunner({
+    settingsService,
+    systemInteractionService,
+    translationProviderService,
+    popupService,
+    reportRecorder: executionReportService
+  });
+
+  trayService.ensureTray();
+  shortcutService.applySettings(currentSettings);
+
+  registerSettingsIpc({
+    settingsService,
+    async onAfterSave(savedSettings) {
+      currentSettings = savedSettings;
+      shortcutService.applySettings(savedSettings);
+      await diagnosticLogService?.info('Settings saved and shortcuts reapplied.');
+    },
+    runtimeStatusProvider: {
+      async getRuntimeStatus() {
+        const helperSnapshot = helperSessionService?.getSnapshot();
+
+        return executionReportService.getRuntimeStatus({
+          ready: true,
+          platform: process.platform,
+          activeProvider: currentSettings.activeProviderId,
+          registeredShortcuts: shortcutService.getRegisteredShortcuts(),
+          helperState: helperSnapshot?.helperState,
+          helperLastErrorCode: helperSnapshot?.helperLastErrorCode,
+          helperPid: helperSnapshot?.helperPid
+        });
+      }
+    }
+  });
+
+  const mainWindow = await windowService.ensureMainWindow();
+
+  if (currentSettings.startMinimized) {
+    mainWindow.hide();
+  }
+
+  app.on('activate', () => {
+    void windowService.showMainWindow();
   });
 });
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
+app.on('before-quit', () => {
+  isQuitting = true;
 });
+
+app.on('will-quit', () => {
+  void helperSessionService?.dispose();
+  shortcutService.dispose();
+  trayService.dispose();
+});
+
+async function handleRunnerFailure(
+  workflow: 'quick-translation' | 'context-translation',
+  error: unknown
+): Promise<void> {
+  await diagnosticLogService?.error(
+    error instanceof Error
+      ? `${workflow} failed: ${error.message}`
+      : `${workflow} failed with a non-error value.`
+  );
+  await windowService.showMainWindow();
+}

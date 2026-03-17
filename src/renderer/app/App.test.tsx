@@ -29,11 +29,25 @@ describe('App settings persistence', () => {
     const getSettings = vi
       .fn<() => Promise<TranslationClientSettings>>()
       .mockResolvedValue(createSettings({ targetLanguage: 'en' }));
-    const saveSettings = vi.fn<(settings: TranslationClientSettings) => Promise<void>>().mockResolvedValue();
+    const saveSettings = vi
+      .fn<(settings: TranslationClientSettings) => Promise<TranslationClientSettings>>()
+      .mockImplementation(async (settings) => settings);
+    const getRuntimeStatus = vi.fn().mockResolvedValue({
+      ready: true,
+      platform: 'win32',
+      activeProvider: 'mock',
+      registeredShortcuts: [],
+      helperState: 'idle',
+      helperLastErrorCode: null,
+      helperPid: null,
+      lastExecution: null,
+      recentExecutions: []
+    });
 
     window.textBridge = {
       getSettings,
-      saveSettings
+      saveSettings,
+      getRuntimeStatus
     };
 
     render(<App />);
@@ -56,11 +70,25 @@ describe('App settings persistence', () => {
     const getSettings = vi
       .fn<() => Promise<TranslationClientSettings>>()
       .mockResolvedValue(loadedSettings);
-    const saveSettings = vi.fn<(settings: TranslationClientSettings) => Promise<void>>().mockResolvedValue();
+    const saveSettings = vi
+      .fn<(settings: TranslationClientSettings) => Promise<TranslationClientSettings>>()
+      .mockImplementation(async (settings) => settings);
+    const getRuntimeStatus = vi.fn().mockResolvedValue({
+      ready: true,
+      platform: 'win32',
+      activeProvider: 'mock',
+      registeredShortcuts: [],
+      helperState: 'idle',
+      helperLastErrorCode: null,
+      helperPid: null,
+      lastExecution: null,
+      recentExecutions: []
+    });
 
     window.textBridge = {
       getSettings,
-      saveSettings
+      saveSettings,
+      getRuntimeStatus
     };
 
     render(<App />);
