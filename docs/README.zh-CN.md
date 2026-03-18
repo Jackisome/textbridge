@@ -165,6 +165,56 @@ npm run helper:test
 - 回写优先替换或插入原控件，失败时弹窗展示并复制结果
 - 平台差异统一收敛到 `src/electron/platform/`，当前实现集中在 `src/electron/platform/win32/`
 
+## 剩余工作
+
+### 1. Windows 文本翻译能力扩展（最高优先级）
+
+**计划文档**: [docs/plans/2026-03-19-windows-text-translation-expansion-plan.md](docs/plans/2026-03-19-windows-text-translation-expansion-plan.md)
+
+**目标**: 在不破坏当前标准控件成功路径的前提下，继续扩展 Windows 文本翻译能力，并把"标准可编辑控件"和"终端/IDE/复杂渲染目标"的处理策略明确分层。
+
+| # | 任务 | 状态 |
+|---|------|------|
+| 1 | 固化目标分类与策略边界 - 在 `AutomationFacade` 增加 `targetFamily`/`fallbackOnly` 分类，在 `WriteTextService` 对 Tier C 目标快速失败 | 待开始 |
+| 2 | 补齐标准 Win32 / WPF 文本控件的安全替换能力 - RichEdit/WPF TextBox `TextPattern` 选区替换 | 待开始 |
+| 3 | 把 helper 目标策略透出到平台日志与执行报告 - 扩展 `StdIoHost` diagnostics，透出 `targetFamily`/`fallbackOnly` | 待开始 |
+| 4 | 维护业务层 fallback 语义 - `fallbackOnly=true` 目标直接走 popup，不再多次无效写回重试 | 待开始 |
+| 5 | 按矩阵执行人工验证并回写证据 - 对 Tier A/B/C 目标逐项验证并更新 `compatibility-matrix.md` | 待开始 |
+
+**推荐执行顺序**: Task 1 → Task 3 → Task 4 → Task 2 → Task 5
+
+### 2. 翻译 Provider 重构
+
+**计划文档**: [docs/plans/2026-03-08-provider-refactor-implementation.md](docs/plans/2026-03-08-provider-refactor-implementation.md)
+
+**目标**: 重构翻译 provider 架构、设置模型和设置页，支持 claude、deepseek、minimax、gemini、google、tencent、tongyi、custom、mock 等多 provider。
+
+| # | 任务 | 状态 |
+|---|------|------|
+| 1 | 重建 provider 共享类型与默认设置 - `ProviderId` 类型、`providers` 配置结构 | 待评审 |
+| 2 | 重写设置持久化与归一化逻辑 | 待开始 |
+| 3 | 实现各 provider HTTP 适配器 | 待开始 |
+| 4 | 重构设置页 UI | 待开始 |
+
+### 3. 人工验证与文档维护
+
+| 目标 | 描述 | 状态 |
+|------|------|------|
+| Windows 设置搜索框 | 手工验证 Tier A 目标 | 待验证 |
+| WPF TextBox | 手工验证 Tier A 目标 | 待验证 |
+| Win32 RichEdit20W/50W | 手工验证 Tier A 目标 | 待验证 |
+| VS Code / Terminal 样本 | 确认 Tier C fallback-only 行为 | 待验证 |
+| 兼容性矩阵 | 根据验证结果更新 | 待开始 |
+
+### 4. 已完成项目（参考）
+
+- ✅ Windows MVP 核心结构（Tasks 1-11 of 2026-03-08 implementation）
+- ✅ Windows Helper 集成（Tasks 1-8 of 2026-03-09 helper integration）
+- ✅ 多语言 README 支持（English, 简体中文, 日本語）
+- ✅ MiniMax Provider 原生实现
+
+---
+
 ## MVP 边界
 
 - 当前仓库已完成 Windows MVP 的主要结构边界：共享 DTO、provider 边界、Win32 协议适配、fallback 决策、quick/context runner，以及设置与运行状态 UI 骨架。

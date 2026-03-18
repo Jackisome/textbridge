@@ -165,6 +165,56 @@ For detailed manual validation steps, see:
 - Write-back prioritizes replacing or inserting into the original control, falls back to popup display and copy result on failure
 - Platform differences are uniformly converged to `src/electron/platform/`, current implementation is concentrated in `src/electron/platform/win32/`
 
+## Remaining Work
+
+### 1. Windows Text Translation Capability Expansion (Highest Priority)
+
+**Plan**: [docs/plans/2026-03-19-windows-text-translation-expansion-plan.md](docs/plans/2026-03-19-windows-text-translation-expansion-plan.md)
+
+**Goal**: Expand Windows text translation capability without breaking current standard control success path, and explicitly layer the handling strategy for "standard editable controls" vs "terminal/IDE/complex rendering targets".
+
+| # | Task | Status |
+|---|------|--------|
+| 1 | Solidify target classification and strategy boundaries - add `targetFamily`/`fallbackOnly` in `AutomationFacade`, fast-fail Tier C targets in `WriteTextService` | Pending |
+| 2 | Complete safe replacement for standard Win32/WPF text controls - RichEdit/WPF TextBox `TextPattern` selection replacement | Pending |
+| 3 | Surface helper target strategy to platform logs and execution reports - extend `StdIoHost` diagnostics with `targetFamily`/`fallbackOnly` | Pending |
+| 4 | Maintain business layer fallback semantics - `fallbackOnly=true` targets go directly to popup, no more invalid write-back retries | Pending |
+| 5 | Execute manual validation per matrix and document evidence - validate Tier A/B/C targets and update `compatibility-matrix.md` | Pending |
+
+**Recommended execution order**: Task 1 → Task 3 → Task 4 → Task 2 → Task 5
+
+### 2. Translation Provider Refactor
+
+**Plan**: [docs/plans/2026-03-08-provider-refactor-implementation.md](docs/plans/2026-03-08-provider-refactor-implementation.md)
+
+**Goal**: Refactor translation provider architecture, settings model, and settings page to support claude, deepseek, minimax, gemini, google, tencent, tongyi, custom, mock with unified boundary.
+
+| # | Task | Status |
+|---|------|--------|
+| 1 | Rebuild provider shared types and default settings - `ProviderId` type, `providers` config structure | Pending Review |
+| 2 | Rewrite settings persistence and normalization logic | Pending |
+| 3 | Implement HTTP adapters for each provider | Pending |
+| 4 | Refactor settings page UI | Pending |
+
+### 3. Manual Validation and Documentation
+
+| Target | Description | Status |
+|--------|-------------|--------|
+| Windows Settings Search Box | Manual validation of Tier A target | Pending |
+| WPF TextBox | Manual validation of Tier A target | Pending |
+| Win32 RichEdit20W/50W | Manual validation of Tier A target | Pending |
+| VS Code / Terminal samples | Confirm Tier C fallback-only behavior | Pending |
+| Compatibility Matrix | Update based on validation results | Pending |
+
+### 4. Completed Items (Reference)
+
+- ✅ Windows MVP core structure (Tasks 1-11 of 2026-03-08 implementation)
+- ✅ Windows Helper integration (Tasks 1-8 of 2026-03-09 helper integration)
+- ✅ Multi-language README support (English, Simplified Chinese, Japanese)
+- ✅ MiniMax Provider native implementation
+
+---
+
 ## MVP Boundaries
 
 - The repository has completed the main structural boundaries of Windows MVP: shared DTOs, provider boundaries, Win32 protocol adaptation, fallback decisions, quick/context runner, and settings and runtime status UI skeletons.

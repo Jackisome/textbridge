@@ -165,12 +165,62 @@ npm run helper:test
 - 書戻は元のコントロールの置換または挿入を優先、失敗時はポップアップ表示とコピー結果にフォールバック
 - プラットフォーム差異は`src/electron/platform/`に統一收敛、現在の実装は`src/electron/platform/win32/`に集中
 
+## 残りの作業
+
+### 1. Windows テキスト翻訳能力拡張（最高優先度）
+
+**計画ドキュメント**: [docs/plans/2026-03-19-windows-text-translation-expansion-plan.md](docs/plans/2026-03-19-windows-text-translation-expansion-plan.md)
+
+**目標**: 現在の標準コントロール成功パスを壊すことなく、Windows テキスト翻訳能力を拡張し、「標準編集コントロール」と「ターミナル/IDE/複雑レンダリングターゲット」の処理戦略を明確にレイヤー化する。
+
+| # | タスク | 状態 |
+|---|------|------|
+| 1 | ターゲット分類と戦略境界の固化 - `AutomationFacade` に `targetFamily`/`fallbackOnly` 分類を追加し、`WriteTextService` で Tier C ターゲットを高速失敗 | 未開始 |
+| 2 | 標準 Win32/WPF テキストコントロールの安全な置換能力を補完 - RichEdit/WPF TextBox `TextPattern` 選択置換 | 未開始 |
+| 3 | helper ターゲット戦略をプラットフォームログと実行レポートに露出 - `StdIoHost` diagnostics を拡張し、`targetFamily`/`fallbackOnly` を露出 | 未開始 |
+| 4 | ビジネスレイヤーの fallback セマンティクスを維持 - `fallbackOnly=true` ターゲットは直接 popup へ、無効な書き戻しの再試行を停止 | 未開始 |
+| 5 | マトリックスに従った手動検証を実行し証拠を記録 - Tier A/B/C ターゲットの検証と `compatibility-matrix.md` の更新 | 未開始 |
+
+**推奨実行順序**: Task 1 → Task 3 → Task 4 → Task 2 → Task 5
+
+### 2. 翻訳 Provider リファクタリング
+
+**計画ドキュメント**: [docs/plans/2026-03-08-provider-refactor-implementation.md](docs/plans/2026-03-08-provider-refactor-implementation.md)
+
+**目標**: 翻訳 provider アーキテクチャ、設定モデル、設定ページをリファクタリングし、claude、deepseek、minimax、gemini、google、tencent、tongyi、custom、mock をサポート。
+
+| # | タスク | 状態 |
+|---|------|------|
+| 1 | provider 共有タイプとデフォルト設定の再構築 - `ProviderId` タイプ、`providers` 設定構造 | レビュー待ち |
+| 2 | 設定永続化と正規化ロジックの書き直し | 未開始 |
+| 3 | 各 provider HTTP アダプタの実装 | 未開始 |
+| 4 | 設定ページ UI のリファクタリング | 未開始 |
+
+### 3. 手動検証とドキュメントメンテナンス
+
+| ターゲット | 説明 | 状態 |
+|------|------|------|
+| Windows 設定検索ボックス | Tier A ターゲットの手動検証 | 検証待ち |
+| WPF TextBox | Tier A ターゲットの手動検証 | 検証待ち |
+| Win32 RichEdit20W/50W | Tier A ターゲットの手動検証 | 検証待ち |
+| VS Code / Terminal サンプル | Tier C fallback-only 動作の確認 | 検証待ち |
+| 互換性マトリックス | 検証結果に基づく更新 | 未開始 |
+
+### 4. 完了したプロジェクト（参照）
+
+- ✅ Windows MVP コア構造（Tasks 1-11 of 2026-03-08 implementation）
+- ✅ Windows Helper 統合（Tasks 1-8 of 2026-03-09 helper integration）
+- ✅ 多言語 README サポート（English, 简体中文, 日本語）
+- ✅ MiniMax Provider ネイティブ実装
+
+---
+
 ## MVP境界
 
 - 現在のレポジトリはWindows MVPの主要な構造境界を完了しています：共有DTO、provider境界、Win32プロトコル适配、fallback意思決定、quick/context runner、設定と実行状態UIスケルトン。
 - `native/win32-helper`は実際のWindows helperホストに接続されており、`health-check`、`capture-text`、`write-text`、`clipboard-write`の4つのコマンドを実装しています。
 - 現在の最初の版本の約束は標準編集コントロールを優先的にカバーすること。`replace-selection`はまだ保守的な戦略を維持しており、選択範囲を安全に確認できない場合は明確に失敗し、貼り付け/ポップアップfallbackに切り替えします。
-- fallback結果ページとコンテキスト入力ページはすでにページスケルトンを備えていますが、完全な独立ポップアップインタラクティブとIPC送り返しは実際のウィンドウフローで引き続き配線が必要です。
+- fallback結果ページとコンテキスト入力ページはすでにページスケルトンを備えていますが、完全な独立ポップアップインタラクティブとIPC送り返しは実際のウィンドウフローで引く続き配線が必要です。
 - 実行状態パネルはデフォルトで登録されたショートカット、現在のprovider、helper状態、最近の実行サマリーを表示し、完全な原文または訳文を保存しません。
 
 ## 現在の検証状態
