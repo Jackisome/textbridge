@@ -2,3 +2,29 @@ node_modules/
 dist/
 dist-electron/
 out/
+
+# Build artifacts (win32-helper .NET build, etc.)
+.artifacts/
+
+# Claude Code internal files
+.claude/
+
+# Diagnostic and log files
+*.log
+logs/
+
+# Environment files (secrets)
+.env
+.env.local
+.env.*.local
+
+# OS temporary files
+.DS_Store
+Thumbs.db
+
+# npm/yarn debug logs
+npm-debug.log*
+yarn-error.log
+
+# Electron builder cache
+.electron-builder-cache/
