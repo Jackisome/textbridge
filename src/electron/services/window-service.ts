@@ -23,9 +23,9 @@ export function createMainWindowOptions({
 }: CreateMainWindowOptionsInput): BrowserWindowConstructorOptions {
   return {
     width: 1280,
-    height: 840,
+    height: 900,
     minWidth: 960,
-    minHeight: 640,
+    minHeight: 680,
     backgroundColor: '#0f172a',
     autoHideMenuBar: true,
     webPreferences: {

@@ -16,6 +16,7 @@
 - `src/electron/preload.ts`：预加载脚本入口
 - `src/electron/ipc/`：IPC 通道定义、handler 注册与主进程对外暴露边界
 - `src/electron/services/`：主进程服务层，负责系统能力编排与流程组织
+- `src/electron/services/providers/`：翻译 Provider 实现与注册中心
 - `src/electron/security/`：桥接暴露策略、权限边界与安全相关封装
 - `src/electron/platform/`：平台适配层，只在这里处理系统差异
 - `src/electron/platform/common/`：多平台共享的适配逻辑

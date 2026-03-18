@@ -170,7 +170,7 @@ export default function App() {
   function handleReset() {
     setAppState((previousState) => ({
       ...previousState,
-      saveMessage: '已恢复为上次保存的配置。',
+      saveMessage: '已放弃未保存的更改。',
       settings: cloneSettings(previousState.savedSettings)
     }));
   }

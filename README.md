@@ -15,6 +15,23 @@
 - `React DOM`：挂载 React 应用到 Electron 页面
 - `Vite`：渲染层开发服务器、HMR 与前端构建
 - `TypeScript`：主进程、预加载和渲染层统一类型系统
+- `Vitest`：单元测试
+
+### 翻译 Provider
+
+支持多 Provider 接入，统一接口定义于 `src/shared/types/provider.ts`：
+
+- `MiniMax`（原生实现，含完整错误处理）
+- `Claude`（Anthropic）
+- `Gemini`（Google）
+- `DeepSeek`
+- `Tongyi`（阿里云）
+- `Tencent`（腾讯云）
+- `Google`（Google Cloud Translation）
+- `OpenAI-Compatible`（兼容 OpenAI 接口的第三方模型）
+- `Custom`（用户自定义 endpoint）
+
+Provider 配置统一由 `src/electron/services/providers/` 管理，`src/shared/constants/provider-metadata.ts` 定义各 Provider 的元数据。
 
 ### 开发辅助工具
 
@@ -85,23 +102,54 @@ npm run typecheck
 
 ```powershell
 npm run helper:build
-dotnet test native/win32-helper/TextBridge.Win32Helper.Tests/TextBridge.Win32Helper.Tests.csproj
+npm run helper:test
 ```
+
+当前 Windows helper 位于 `native/win32-helper/`，目录结构：
+
+- `Services/`：业务服务实现（`HealthCheckService`、`CaptureTextService`、`WriteTextService`）
+- `Protocols/`：协议请求/响应模型
+- `Interop/`：Windows API 互操作封装（UI Automation、剪贴板、输入模拟）
+
+开发模式下由 Electron 主进程通过 `dotnet run --project native/win32-helper/TextBridge.Win32Helper.csproj` 惰性启动。若当前终端 `PATH` 中没有 `dotnet`，主进程会依次尝试：
+
+- `TEXTBRIDGE_DOTNET_PATH`
+- `DOTNET_ROOT/dotnet.exe`
+- `C:/Program Files/dotnet/dotnet.exe`
+
+已接入的协议命令：
+
+- `health-check`：返回 helper 能力列表
+- `capture-text`：文本捕获，支持 `uia`（UI Automation）和 `clipboard` 两种方式
+- `write-text`：文本回写
+- `clipboard-write`：剪贴板写入
+
+详细手工验证步骤见：
+
+- [docs/plans/2026-03-09-windows-helper-manual-validation.md](docs/plans/2026-03-09-windows-helper-manual-validation.md)
+- [docs/plans/2026-03-08-windows-text-translation-compatibility-matrix.md](docs/plans/2026-03-08-windows-text-translation-compatibility-matrix.md)
 
 ## 目录说明
 
 - `src/electron/main.ts`：Electron 主进程入口
 - `src/electron/preload.ts`：预加载脚本
+- `src/electron/ipc/`：IPC 通道定义与 handler 注册
+- `src/electron/services/`：主进程服务层（翻译执行、快捷键、系统托盘、窗口管理）
+- `src/electron/services/providers/`：翻译 Provider 实现（MiniMax、Claude、Gemini 等）
+- `src/electron/platform/win32/`：Windows 平台适配（Win32 协议、helper session）
 - `src/renderer/app/main.tsx`：React 渲染入口
 - `src/renderer/app/App.tsx`：React 页面组件
-- `src/renderer/app/styles.css`：渲染层样式
-- `src/renderer/types/vite-env.d.ts`：渲染层全局类型声明
+- `src/renderer/features/runtime-status/`：运行状态面板
+- `src/renderer/pages/`：页面级视图（设置页、回退结果页、上下文弹窗页）
+- `src/core/`：纯业务层（use cases、entities、contracts）
+- `src/shared/`：跨进程共享类型与常量
 - `vite.config.ts`：Vite 配置
 - `tsconfig.json`：React / Vite TypeScript 配置
 - `tsconfig.electron.json`：Electron 主进程 TypeScript 配置
 - `index.html`：Vite 与 Electron 共用入口页面
 - `dist/`：Vite 前端构建产物
 - `dist-electron/`：Electron TypeScript 编译产物
+- `native/win32-helper/`：Windows 原生 helper（.NET 10.x）
 
 ## 产品定位
 
@@ -132,6 +180,11 @@ dotnet test native/win32-helper/TextBridge.Win32Helper.Tests/TextBridge.Win32Hel
   - [docs/plans/2026-03-09-windows-helper-manual-validation.md](docs/plans/2026-03-09-windows-helper-manual-validation.md)
 
 详细设计见 [docs/plans/2026-03-08-windows-text-translation-client-design.md](docs/plans/2026-03-08-windows-text-translation-client-design.md)。
+
+当前 helper 设计与实现计划见：
+
+- [docs/plans/2026-03-09-windows-helper-integration-design.md](docs/plans/2026-03-09-windows-helper-integration-design.md)
+- [docs/plans/2026-03-09-windows-helper-integration-implementation.md](docs/plans/2026-03-09-windows-helper-integration-implementation.md)
 
 ## 开发建议
 

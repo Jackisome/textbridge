@@ -115,7 +115,7 @@ export function SettingsPage({
 
           <div className="header-actions">
             <button type="button" className="secondary-button" onClick={onReset}>
-              恢复已保存
+              放弃更改
             </button>
             <button type="button" className="primary-button" onClick={onSave}>
               {isSaving ? '保存中...' : '保存更改'}
