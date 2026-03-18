@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- 背景圆形 -->
+  <circle cx="32" cy="32" r="30" fill="#f6f7f9"/>
+
+  <!-- 左侧文字块 -->
+  <rect x="6" y="26" width="16" height="12" rx="3" fill="#14233c"/>
+
+  <!-- 右侧文字块 -->
+  <rect x="42" y="26" width="16" height="12" rx="3" fill="#1f7aff"/>
+
+  <!-- 左箭头 -->
+  <path d="M 22 28 L 30 32 L 22 36"
+        stroke="#14233c" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+
+  <!-- 右箭头 -->
+  <path d="M 42 28 L 34 32 L 42 36"
+        stroke="#1f7aff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+
+  <!-- 中心交换符号 -->
+  <circle cx="32" cy="32" r="6" fill="#67a2ff"/>
+  <path d="M 30 29 L 34 35 M 34 29 L 30 35"
+        stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
+</svg>

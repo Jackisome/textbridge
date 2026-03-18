@@ -1,4 +1,5 @@
-import { BrowserWindow, type BrowserWindowConstructorOptions } from 'electron';
+import { app, BrowserWindow, type BrowserWindowConstructorOptions } from 'electron';
+import path from 'node:path';
 
 export interface WindowService {
   ensureMainWindow(): Promise<BrowserWindow>;
@@ -18,6 +19,14 @@ export interface CreateMainWindowOptionsInput {
   preloadPath: string;
 }
 
+function getIconPath(): string {
+  const isDev = !app.isPackaged;
+  if (isDev) {
+    return path.join(app.getAppPath(), 'build', 'icons', 'icon-256.png');
+  }
+  return path.join(process.resourcesPath, 'icons', 'icon-256.png');
+}
+
 export function createMainWindowOptions({
   preloadPath
 }: CreateMainWindowOptionsInput): BrowserWindowConstructorOptions {
@@ -28,6 +37,7 @@ export function createMainWindowOptions({
     minHeight: 680,
     backgroundColor: '#0f172a',
     autoHideMenuBar: true,
+    icon: getIconPath(),
     webPreferences: {
       preload: preloadPath,
       contextIsolation: true,
