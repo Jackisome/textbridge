@@ -7,6 +7,11 @@ describe('createContextTranslationRunner', () => {
     let translatedRequestInstructions = '';
     const fallbackCalls: Array<{ translatedText: string; sourceText: string }> = [];
     const clipboardCopies: string[] = [];
+    const writeCalls: Array<{
+      text: string;
+      settings: unknown;
+      expectedSourceText: string | undefined;
+    }> = [];
 
     const runner = createContextTranslationRunner({
       settingsService: {
@@ -22,7 +27,12 @@ describe('createContextTranslationRunner', () => {
             text: 'Please summarize this paragraph.'
           };
         },
-        async writeTranslatedText() {
+        async writeTranslatedText(text, settings, expectedSourceText) {
+          writeCalls.push({
+            text,
+            settings,
+            expectedSourceText
+          });
           return {
             success: false,
             method: 'popup-fallback',
@@ -83,6 +93,100 @@ describe('createContextTranslationRunner', () => {
       {
         translatedText: 'Executive summary in business English.',
         sourceText: 'Please summarize this paragraph.'
+      }
+    ]);
+    expect(writeCalls).toEqual([
+      {
+        text: 'Executive summary in business English.',
+        settings: DEFAULT_SETTINGS,
+        expectedSourceText: 'Please summarize this paragraph.'
+      }
+    ]);
+  });
+
+  it('uses the raw captured text for write-back verification when context translation trims whitespace', async () => {
+    const translationRequests: Array<{ text: string; instructions?: string }> = [];
+    const writeCalls: Array<{
+      text: string;
+      expectedSourceText: string | undefined;
+    }> = [];
+
+    const runner = createContextTranslationRunner({
+      settingsService: {
+        async getSettings() {
+          return DEFAULT_SETTINGS;
+        }
+      },
+      systemInteractionService: {
+        async captureSelectedText() {
+          return {
+            success: true,
+            method: 'uia',
+            text: ' world '
+          };
+        },
+        async writeTranslatedText(text, _settings, expectedSourceText) {
+          writeCalls.push({
+            text,
+            expectedSourceText
+          });
+
+          return {
+            success: true,
+            method: 'paste-translation'
+          };
+        },
+        async copyToClipboard() {}
+      },
+      translationProviderService: {
+        async translateWithSettings(_settings, request) {
+          translationRequests.push({
+            text: request.text,
+            instructions: request.instructions
+          });
+
+          return {
+            translatedText: '[Mock] world',
+            sourceLanguage: 'auto',
+            targetLanguage: 'zh-CN',
+            detectedSourceLanguage: 'en',
+            provider: 'mock'
+          };
+        }
+      },
+      popupService: {
+        async requestContextInstructions() {
+          return 'Keep punctuation.';
+        },
+        async showFallbackResult() {}
+      },
+      createReportId: () => 'context-report-2',
+      now: () => '2026-03-08T11:10:00.000Z'
+    });
+
+    await expect(runner.run()).resolves.toEqual({
+      id: 'context-report-2',
+      workflow: 'context-translation',
+      status: 'completed',
+      startedAt: '2026-03-08T11:10:00.000Z',
+      completedAt: '2026-03-08T11:10:00.000Z',
+      provider: 'mock',
+      captureMethod: 'uia',
+      writeBackMethod: 'paste-translation',
+      sourceTextLength: 7,
+      translatedTextLength: 12
+    });
+
+    expect(translationRequests).toEqual([
+      {
+        text: 'world',
+        instructions: 'Keep punctuation.'
+      }
+    ]);
+    expect(writeCalls).toEqual([
+      {
+        text: '[Mock] world',
+        expectedSourceText: ' world '
       }
     ]);
   });

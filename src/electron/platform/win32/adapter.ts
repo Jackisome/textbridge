@@ -11,7 +11,11 @@ import type { Win32CaptureMethod, Win32WriteMethod } from './protocol';
 
 export interface Win32Adapter {
   captureText(method: Win32CaptureMethod): Promise<TextCaptureResult>;
-  writeText(text: string, method: Win32WriteMethod): Promise<WriteBackResult>;
+  writeText(
+    text: string,
+    method: Win32WriteMethod,
+    expectedSourceText?: string
+  ): Promise<WriteBackResult>;
   copyToClipboard(text: string): Promise<void>;
 }
 
@@ -77,12 +81,16 @@ export function createWin32Adapter({
 
     async writeText(
       text: string,
-      method: Win32WriteMethod
+      method: Win32WriteMethod,
+      expectedSourceText?: string
     ): Promise<WriteBackResult> {
       if (helperSession) {
         const response = await helperSession.send('write-text', {
           method,
-          text
+          text,
+          ...(expectedSourceText
+            ? { expectedSourceText }
+            : {})
         });
 
         if (response.kind !== 'write-text') {
@@ -103,7 +111,10 @@ export function createWin32Adapter({
       const response = await processClient.send({
         kind: 'write-text',
         method,
-        text
+        text,
+        ...(expectedSourceText
+          ? { expectedSourceText }
+          : {})
       });
 
       if (response.kind !== 'write-text') {

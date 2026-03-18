@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json.Nodes;
 using System.Windows.Automation;
+using System.Windows.Automation.Text;
 using TextBridge.Win32Helper.Services;
 
 namespace TextBridge.Win32Helper.Interop;
@@ -12,8 +13,47 @@ public interface IAutomationFacade
     CaptureTextResult CaptureSelection();
 }
 
-public sealed class AutomationFacade : IAutomationFacade
+public interface IFocusedElementInspectionService
 {
+    FocusedElementSnapshot InspectFocusedElement();
+}
+
+public interface IFocusedElementValueWriter
+{
+    void SetFocusedValue(string value, string? expectedRuntimeId = null);
+}
+
+public sealed record FocusedElementSnapshot(
+    bool HasFocusedElement,
+    bool IsEditable,
+    string? RuntimeId,
+    string? SelectedText,
+    string? ValueText,
+    string? SelectionPrefixText,
+    string? SelectionSuffixText,
+    JsonObject Diagnostics);
+
+public sealed class AutomationFacade :
+    IAutomationFacade,
+    IFocusedElementInspectionService,
+    IFocusedElementValueWriter
+{
+    private const uint EmGetSel = 0x00B0;
+    private const uint WmGetText = 0x000D;
+    private const uint WmGetTextLength = 0x000E;
+    private const uint WmSetText = 0x000C;
+    private const int GwlStyle = -16;
+    private const int EsReadOnly = 0x0800;
+    private static readonly HashSet<string> NativeEditControlClasses =
+    [
+        "Edit",
+        "RichEdit20W",
+        "RichEdit50W",
+        "RICHEDIT50W",
+        "RICHEDIT60W",
+        "RichEditD2DPT"
+    ];
+
     public CaptureTextResult CaptureSelection()
     {
         var stopwatch = Stopwatch.StartNew();
@@ -43,6 +83,30 @@ public sealed class AutomationFacade : IAutomationFacade
             return CaptureTextResult.Success("uia", selectedText, diagnostics);
         }
 
+        if (TryReadNativeEditSnapshot(focusedElement, out var nativeEditSnapshot, out var isReadOnly))
+        {
+            diagnostics["apiAttempted"] = "native-edit-selection";
+            diagnostics["editable"] = !isReadOnly;
+            diagnostics["selectionDetected"] = nativeEditSnapshot.SelectedText.Length > 0;
+            diagnostics["elapsedMs"] = stopwatch.ElapsedMilliseconds;
+
+            if (nativeEditSnapshot.SelectedText.Length > 0)
+            {
+                diagnostics["selectedTextLength"] = nativeEditSnapshot.SelectedText.Length;
+                diagnostics["nativeSelectionAvailable"] = true;
+                return CaptureTextResult.Success(
+                    "uia",
+                    nativeEditSnapshot.SelectedText,
+                    diagnostics);
+            }
+
+            return CaptureTextResult.Failure(
+                "uia",
+                "TEXT_CAPTURE_NO_SELECTION",
+                "The focused control does not expose a selected text range.",
+                diagnostics);
+        }
+
         if (TryGetValuePattern(focusedElement, out var valuePattern))
         {
             diagnostics["apiAttempted"] = "value-pattern";
@@ -66,6 +130,158 @@ public sealed class AutomationFacade : IAutomationFacade
             "TEXT_CAPTURE_UNSUPPORTED",
             "The focused control does not expose a supported text pattern.",
             diagnostics);
+    }
+
+    public FocusedElementSnapshot InspectFocusedElement()
+    {
+        var foregroundWindow = GetForegroundWindow();
+        var focusedElement = AutomationElement.FocusedElement;
+
+        if (focusedElement is null)
+        {
+            return new FocusedElementSnapshot(
+                HasFocusedElement: false,
+                IsEditable: false,
+                RuntimeId: null,
+                SelectedText: null,
+                ValueText: null,
+                SelectionPrefixText: null,
+                SelectionSuffixText: null,
+                Diagnostics: CreateWindowDiagnostics(foregroundWindow, elapsedMs: 0));
+        }
+
+        var diagnostics = CreateElementDiagnostics(
+            focusedElement,
+            foregroundWindow,
+            elapsedMs: 0);
+        string? selectedText = null;
+        string? valueText = null;
+        string? selectionPrefixText = null;
+        string? selectionSuffixText = null;
+        var isEditable = false;
+        var runtimeId = TryGetRuntimeId(focusedElement);
+
+        if (!string.IsNullOrWhiteSpace(runtimeId))
+        {
+            diagnostics["runtimeId"] = runtimeId;
+        }
+
+        if (TryReadNativeEditSnapshot(focusedElement, out var nativeEditSnapshot, out var nativeEditIsReadOnly))
+        {
+            valueText = nativeEditSnapshot.ValueText;
+            selectedText = nativeEditSnapshot.SelectedText;
+            selectionPrefixText = nativeEditSnapshot.SelectionPrefixText;
+            selectionSuffixText = nativeEditSnapshot.SelectionSuffixText;
+            isEditable = !nativeEditIsReadOnly;
+            diagnostics["editable"] = isEditable;
+            diagnostics["valuePatternAvailable"] = diagnostics["valuePatternAvailable"]?.GetValue<bool>() ?? false;
+            diagnostics["nativeEditSelectionAvailable"] = nativeEditSnapshot.SelectedText.Length > 0;
+            diagnostics["nativeValueTextLength"] = nativeEditSnapshot.ValueText.Length;
+            diagnostics["selectionDetected"] = nativeEditSnapshot.SelectedText.Length > 0;
+
+            if (nativeEditSnapshot.SelectedText.Length > 0)
+            {
+                diagnostics["selectedTextLength"] = nativeEditSnapshot.SelectedText.Length;
+            }
+
+            diagnostics["selectionPrefixTextLength"] = nativeEditSnapshot.SelectionPrefixText.Length;
+            diagnostics["selectionSuffixTextLength"] = nativeEditSnapshot.SelectionSuffixText.Length;
+        }
+
+        var hasSingleSelection = TryGetSingleSelectionRange(
+            focusedElement,
+            out var textPattern,
+            out var selectionRange);
+
+        if (hasSingleSelection)
+        {
+            selectedText = selectionRange!.GetText(-1);
+            diagnostics["selectionDetected"] = !string.IsNullOrEmpty(selectedText);
+
+            if (!string.IsNullOrEmpty(selectedText))
+            {
+                diagnostics["selectedTextLength"] = selectedText.Length;
+            }
+        }
+        else
+        {
+            diagnostics["selectionDetected"] = false;
+        }
+
+        if (TryGetValuePattern(focusedElement, out var valuePattern))
+        {
+            isEditable = !valuePattern.Current.IsReadOnly;
+            valueText = valuePattern.Current.Value;
+            diagnostics["editable"] = isEditable;
+            diagnostics["valuePatternAvailable"] = true;
+
+            if (!string.IsNullOrEmpty(valueText))
+            {
+                diagnostics["valueTextLength"] = valueText.Length;
+            }
+        }
+        else
+        {
+            diagnostics["editable"] = false;
+            diagnostics["valuePatternAvailable"] = false;
+        }
+
+        if (
+            hasSingleSelection &&
+            textPattern is not null &&
+            selectionRange is not null &&
+            valueText is not null &&
+            TryGetSelectionSurroundingText(
+                textPattern,
+                selectionRange,
+                out selectionPrefixText,
+                out selectionSuffixText))
+        {
+            diagnostics["selectionPrefixTextLength"] = selectionPrefixText.Length;
+            diagnostics["selectionSuffixTextLength"] = selectionSuffixText.Length;
+        }
+
+        return new FocusedElementSnapshot(
+            HasFocusedElement: true,
+            IsEditable: isEditable,
+            RuntimeId: runtimeId,
+            SelectedText: selectedText,
+            ValueText: valueText,
+            SelectionPrefixText: selectionPrefixText,
+            SelectionSuffixText: selectionSuffixText,
+            Diagnostics: diagnostics);
+    }
+
+    public void SetFocusedValue(string value, string? expectedRuntimeId = null)
+    {
+        var focusedElement = AutomationElement.FocusedElement ??
+            throw new InvalidOperationException("No focused automation element is available.");
+        var runtimeId = TryGetRuntimeId(focusedElement);
+
+        if (!string.IsNullOrWhiteSpace(expectedRuntimeId) &&
+            !string.Equals(runtimeId, expectedRuntimeId, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "The focused automation element changed before the value could be updated.");
+        }
+
+        if (!TryGetValuePattern(focusedElement, out var valuePattern))
+        {
+            if (!TryWriteNativeEditText(focusedElement, value))
+            {
+                throw new InvalidOperationException(
+                    "The focused control does not expose a writable value pattern.");
+            }
+
+            return;
+        }
+
+        if (valuePattern.Current.IsReadOnly)
+        {
+            throw new InvalidOperationException("The focused control is read-only.");
+        }
+
+        valuePattern.SetValue(value);
     }
 
     private static bool TryGetSelectedText(
@@ -99,6 +315,108 @@ public sealed class AutomationFacade : IAutomationFacade
 
         selectedText = builder.ToString();
         return !string.IsNullOrWhiteSpace(selectedText);
+    }
+
+    private static bool TryGetSingleSelectionRange(
+        AutomationElement element,
+        out TextPattern? textPattern,
+        out TextPatternRange? selectionRange)
+    {
+        textPattern = null;
+        selectionRange = null;
+
+        if (!TryGetTextPattern(element, out var pattern))
+        {
+            return false;
+        }
+
+        var selectionRanges = pattern.GetSelection();
+        if (selectionRanges.Length != 1)
+        {
+            return false;
+        }
+
+        textPattern = pattern;
+        selectionRange = selectionRanges[0];
+        return true;
+    }
+
+    private static bool TryReadNativeEditSnapshot(
+        AutomationElement element,
+        out NativeEditTextSnapshot snapshot,
+        out bool isReadOnly)
+    {
+        snapshot = null!;
+        isReadOnly = false;
+
+        var nativeWindowHandle = element.Current.NativeWindowHandle;
+        if (nativeWindowHandle == 0)
+        {
+            return false;
+        }
+
+        var windowHandle = new IntPtr(nativeWindowHandle);
+        if (!IsSupportedNativeEditControl(windowHandle))
+        {
+            return false;
+        }
+
+        var valueText = ReadNativeEditText(windowHandle);
+        if (valueText is null)
+        {
+            return false;
+        }
+
+        if (!TryGetNativeEditSelection(windowHandle, out var selectionStart, out var selectionEnd))
+        {
+            return false;
+        }
+
+        if (!NativeEditTextSnapshot.TryCreate(
+            valueText,
+            selectionStart,
+            selectionEnd,
+            out var createdSnapshot) ||
+            createdSnapshot is null)
+        {
+            return false;
+        }
+
+        isReadOnly = IsReadOnlyNativeEditControl(windowHandle);
+        snapshot = createdSnapshot;
+        return true;
+    }
+
+    private static bool TryGetSelectionSurroundingText(
+        TextPattern textPattern,
+        TextPatternRange selectionRange,
+        out string prefixText,
+        out string suffixText)
+    {
+        prefixText = string.Empty;
+        suffixText = string.Empty;
+
+        try
+        {
+            var prefixRange = textPattern.DocumentRange.Clone();
+            prefixRange.MoveEndpointByRange(
+                TextPatternRangeEndpoint.End,
+                selectionRange,
+                TextPatternRangeEndpoint.Start);
+            prefixText = prefixRange.GetText(-1) ?? string.Empty;
+
+            var suffixRange = textPattern.DocumentRange.Clone();
+            suffixRange.MoveEndpointByRange(
+                TextPatternRangeEndpoint.Start,
+                selectionRange,
+                TextPatternRangeEndpoint.End);
+            suffixText = suffixRange.GetText(-1) ?? string.Empty;
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private static bool TryGetTextPattern(
@@ -139,13 +457,41 @@ public sealed class AutomationFacade : IAutomationFacade
         long elapsedMs)
     {
         var diagnostics = CreateWindowDiagnostics(foregroundWindow, elapsedMs);
+        var runtimeId = TryGetRuntimeId(element);
+        var nativeWindowHandle = element.Current.NativeWindowHandle;
 
         diagnostics["focused"] = true;
         diagnostics["controlType"] = element.Current.ControlType?.ProgrammaticName;
         diagnostics["automationId"] = element.Current.AutomationId;
         diagnostics["framework"] = element.Current.FrameworkId;
+        diagnostics["elementClassName"] = element.Current.ClassName;
+
+        if (nativeWindowHandle != 0)
+        {
+            diagnostics["nativeWindowHandle"] = nativeWindowHandle;
+        }
+
+        if (!string.IsNullOrWhiteSpace(runtimeId))
+        {
+            diagnostics["runtimeId"] = runtimeId;
+        }
 
         return diagnostics;
+    }
+
+    private static string? TryGetRuntimeId(AutomationElement element)
+    {
+        try
+        {
+            var runtimeId = element.GetRuntimeId();
+            return runtimeId is { Length: > 0 }
+                ? string.Join("-", runtimeId)
+                : null;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private static JsonObject CreateWindowDiagnostics(
@@ -216,6 +562,98 @@ public sealed class AutomationFacade : IAutomationFacade
         return builder.ToString();
     }
 
+    private static bool IsSupportedNativeEditControl(IntPtr windowHandle)
+    {
+        if (windowHandle == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        var className = ReadWindowClassName(windowHandle);
+        return className.Length > 0 && NativeEditControlClasses.Contains(className);
+    }
+
+    private static string? ReadNativeEditText(IntPtr windowHandle)
+    {
+        var lengthResult = SendMessage(
+            windowHandle,
+            WmGetTextLength,
+            IntPtr.Zero,
+            IntPtr.Zero);
+        var length = lengthResult.ToInt32();
+
+        if (length < 0)
+        {
+            return null;
+        }
+
+        var builder = new StringBuilder(length + 1);
+        _ = SendMessage(
+            windowHandle,
+            WmGetText,
+            (IntPtr)builder.Capacity,
+            builder);
+        return builder.ToString();
+    }
+
+    private static bool TryGetNativeEditSelection(
+        IntPtr windowHandle,
+        out int selectionStart,
+        out int selectionEnd)
+    {
+        selectionStart = 0;
+        selectionEnd = 0;
+
+        var startPointer = Marshal.AllocHGlobal(sizeof(int));
+        var endPointer = Marshal.AllocHGlobal(sizeof(int));
+
+        try
+        {
+            _ = SendMessage(windowHandle, EmGetSel, startPointer, endPointer);
+            selectionStart = Marshal.ReadInt32(startPointer);
+            selectionEnd = Marshal.ReadInt32(endPointer);
+            return true;
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(startPointer);
+            Marshal.FreeHGlobal(endPointer);
+        }
+    }
+
+    private static bool IsReadOnlyNativeEditControl(IntPtr windowHandle)
+    {
+        var style = GetWindowStyle(windowHandle);
+        return (style & EsReadOnly) == EsReadOnly;
+    }
+
+    private static bool TryWriteNativeEditText(
+        AutomationElement element,
+        string value)
+    {
+        var nativeWindowHandle = element.Current.NativeWindowHandle;
+        if (nativeWindowHandle == 0)
+        {
+            return false;
+        }
+
+        var windowHandle = new IntPtr(nativeWindowHandle);
+        if (!IsSupportedNativeEditControl(windowHandle) || IsReadOnlyNativeEditControl(windowHandle))
+        {
+            return false;
+        }
+
+        var result = SendMessage(windowHandle, WmSetText, IntPtr.Zero, value);
+        return result != IntPtr.Zero;
+    }
+
+    private static long GetWindowStyle(IntPtr windowHandle)
+    {
+        return IntPtr.Size == 8
+            ? GetWindowLongPtr(windowHandle, GwlStyle).ToInt64()
+            : GetWindowLong(windowHandle, GwlStyle);
+    }
+
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
 
@@ -235,4 +673,31 @@ public sealed class AutomationFacade : IAutomationFacade
     private static extern uint GetWindowThreadProcessId(
         IntPtr windowHandle,
         out uint processId);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr SendMessage(
+        IntPtr windowHandle,
+        uint message,
+        IntPtr wParam,
+        StringBuilder lParam);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr SendMessage(
+        IntPtr windowHandle,
+        uint message,
+        IntPtr wParam,
+        string lParam);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr SendMessage(
+        IntPtr windowHandle,
+        uint message,
+        IntPtr wParam,
+        IntPtr lParam);
+
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
+    private static extern IntPtr GetWindowLongPtr(IntPtr windowHandle, int index);
+
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongW")]
+    private static extern int GetWindowLong(IntPtr windowHandle, int index);
 }

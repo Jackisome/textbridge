@@ -21,7 +21,11 @@ export interface ContextTranslationSystemInteractionService {
     errorCode?: string;
     errorMessage?: string;
   }>;
-  writeTranslatedText(text: string, settings?: TranslationClientSettings): Promise<{
+  writeTranslatedText(
+    text: string,
+    settings?: TranslationClientSettings,
+    expectedSourceText?: string
+  ): Promise<{
     success: boolean;
     method: ExecutionReport['writeBackMethod'];
     errorCode?: string;
@@ -69,6 +73,7 @@ export function createContextTranslationRunner({
       const settings = await settingsService.getSettings();
       const startedAt = now();
       const captureResult = await systemInteractionService.captureSelectedText(settings);
+      const sourceText = captureResult.text ?? '';
 
       if (!captureResult.success) {
         const report: ExecutionReport = {
@@ -88,7 +93,6 @@ export function createContextTranslationRunner({
         return report;
       }
 
-      const sourceText = captureResult.text ?? '';
       const instructions = await popupService.requestContextInstructions(sourceText);
 
       if (instructions === null) {
@@ -143,7 +147,8 @@ export function createContextTranslationRunner({
       );
       const writeBackResult = await systemInteractionService.writeTranslatedText(
         translationResult.translatedText,
-        settings
+        settings,
+        sourceText
       );
 
       const baseReport: ExecutionReport = {
@@ -155,13 +160,13 @@ export function createContextTranslationRunner({
         provider: translationResult.provider,
         captureMethod: captureResult.method,
         writeBackMethod: writeBackResult.method,
-        sourceTextLength: translationRequestResult.request.text.length,
+        sourceTextLength: sourceText.length,
         translatedTextLength: translationResult.translatedText.length
       };
 
       if (writeBackResult.success) {
         reportRecorder?.record(baseReport, {
-          sourceText: translationRequestResult.request.text,
+          sourceText,
           translatedText: translationResult.translatedText
         });
         return baseReport;
@@ -178,12 +183,12 @@ export function createContextTranslationRunner({
         await systemInteractionService.copyToClipboard(translationResult.translatedText);
         await popupService.showFallbackResult({
           translatedText: translationResult.translatedText,
-          sourceText: translationRequestResult.request.text,
+          sourceText,
           report: fallbackReport
         });
 
         reportRecorder?.record(fallbackReport, {
-          sourceText: translationRequestResult.request.text,
+          sourceText,
           translatedText: translationResult.translatedText
         });
         return fallbackReport;
@@ -196,7 +201,7 @@ export function createContextTranslationRunner({
       };
 
       reportRecorder?.record(report, {
-        sourceText: translationRequestResult.request.text,
+        sourceText,
         translatedText: translationResult.translatedText
       });
       return report;

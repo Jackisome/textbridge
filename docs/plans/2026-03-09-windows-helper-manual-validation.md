@@ -1,162 +1,249 @@
 # Windows Helper Manual Validation
 
-## 目标
+**Date:** 2026-03-19  
+**Audience:** 开发者、本地联调、兼容性验证执行人
 
-本文档用于在 Windows 开发环境中手工验证 TextBridge 的真实 helper 链路，重点覆盖：
+## Goal
 
-- 全局快捷键是否真正触发 quick translation
-- `native/win32-helper` 是否被主进程惰性拉起并保持可观测
-- 标准可编辑控件中的捕获、翻译、写回与 fallback 是否符合预期
-- 日志和运行状态面板是否足够支持故障判断
+用可重复的本地步骤验证这条闭环是否成立：
 
-## 启动前提
+1. 全局快捷键触发
+2. helper 启动并响应
+3. 选中文本被捕获
+4. mock provider 返回可预测译文
+5. 结果被写回，或至少进入 popup fallback 并写入剪贴板
+6. 有足够日志判断失败位置
 
-需要先确认：
+## Latest Verified Baseline
 
-- `npm install` 已完成
-- `.NET SDK 10.x` 可用
-- 当前系统为 Windows
+- `2026-03-18` Chrome `<textarea>`：已验证 `replace-selection` 成功，属于观察样本，不外推到其他 Chromium 输入控件
+- `2026-03-19` Windows 记事本：已验证 `replace-selection` 成功，且两次独立触发都通过，可作为当前 Win32 标准控件基线
+- 当前下一轮优先目标：`系统设置搜索框`、`WPF TextBox`、`Win32 RichEdit20W/50W`
 
-建议先执行：
+## Preconditions
+
+- 操作系统：Windows
+- `.NET SDK` 已安装
+- 开发模式优先使用 `mock` provider
+- 当前项目基于 worktree `feature/windows-text-translation-client`
+
+## Commands
+
+### 1. 运行 TypeScript 与 .NET 自动化验证
 
 ```powershell
-dotnet --info
-npm run typecheck
+npx vitest run src/electron/platform/common/helper-protocol.test.ts src/electron/platform/common/stdio-json-client.test.ts src/electron/platform/win32/helper-path.test.ts src/electron/platform/win32/helper-session-service.test.ts src/electron/platform/win32/adapter.test.ts src/electron/services/execution-report-service.test.ts src/electron/services/diagnostic-log-service.test.ts src/electron/services/settings-service.test.ts src/electron/services/system-interaction-service.test.ts src/electron/ipc/register-settings-ipc.test.ts src/electron/services/quick-translation-runner.test.ts src/electron/services/context-translation-runner.test.ts src/electron/services/shortcut-service.test.ts src/renderer/features/runtime-status/runtime-status-panel.test.tsx src/renderer/pages/settings-page.test.tsx
 ```
 
-## 启动方式
+```powershell
+& 'C:/Program Files/dotnet/dotnet.exe' test native/win32-helper/TextBridge.Win32Helper.Tests/TextBridge.Win32Helper.Tests.csproj
+```
 
-开发环境下使用：
+### 2. 启动开发环境
 
 ```powershell
 npm run dev
 ```
 
-这会同时启动：
+启动后应看到：
 
-- Vite renderer
-- Electron 主进程 TypeScript watch
-- Electron 应用本体
+- Electron 主进程已编译
+- Renderer 已启动在 `http://127.0.0.1:5173`
+- 应用主窗口可打开设置页
 
-Windows helper 不会在 Electron 启动时立即常驻，而是在首次触发系统交互请求时惰性启动。
+## Runtime Panel Checks
 
-## 调试日志
+打开设置页后，先确认运行状态面板至少包含：
 
-开发环境默认开启 `debug` 级别日志。可通过以下位置观察：
-
-- 主进程诊断日志：
-  `app.getPath('userData')/logs/diagnostic.log`
-- helper 日志：
-  开发环境下默认位于 `native/win32-helper/bin/Debug/net10.0-windows/logs/win32-helper.log`
-
-额外说明：
-
-- helper 协议响应只走 `stdout`
-- helper 诊断日志只走 `stderr` 和 helper 日志文件
-- 设置页运行状态面板会同步展示 `helperState`、`helperLastErrorCode` 和 `helperPid`
-
-## 标准验证流程
-
-### 1. 先确认 UI 基线
-
-1. 打开 TextBridge 设置页。
-2. 进入“运行状态”区块。
-3. 确认能看到：
-   - 当前 Provider
-   - 已注册快捷键
-   - `Helper 状态`
-   - `最近 Helper 错误`
-   - `Helper PID`
+- 当前 Provider
+- 平台
+- 已注册快捷键
+- Helper 状态
+- 最近 Helper 错误
+- Helper PID
+- 最近执行记录
 
 预期：
 
-- 应用刚启动时 `helperState` 通常为 `idle`
-- 在没有触发任何翻译前，`helperPid` 通常为 `未启动`
+- 应用刚启动但未触发 helper 前，`helperState` 通常为 `idle`
+- 第一次触发快捷键后，若 helper 成功启动，应变为 `ready`
+- 若 helper 超时或子进程异常退出，应变为 `degraded` 或 `stopped`
 
-### 2. 验证记事本标准输入框
+## Log Locations
 
-1. 打开 Windows 记事本。
-2. 输入一段英文，例如 `Hello from TextBridge`.
-3. 选中其中一部分文本。
-4. 按下快速翻译快捷键。
-5. 回到 TextBridge 设置页，刷新或重新查看运行状态。
+### Main process diagnostic log
+
+位于 `app.getPath('userData')/logs/diagnostic.log`。
+
+开发时常见关键行：
+
+- `win32 helper session is ready`
+- `win32-helper stderr: ...`
+- `Settings saved and shortcuts reapplied.`
+- `<workflow> failed: ...`
+
+### Helper diagnostic log
+
+开发模式默认位于：
+
+`native/win32-helper/bin/Debug/net10.0-windows/logs/win32-helper.log`
+
+常见关键行：
+
+- `Starting helper host.`
+- `Handling request 'health-check' (...)`
+- `Handling request 'capture-text' (...)`
+- `Handling request 'write-text' (...)`
+- `Handling request 'clipboard-write' (...)`
+
+## Recommended Functional Validation Order
+
+### 1. Helper health-check smoke
+
+先确认 helper 本身能独立返回结构化响应：
+
+```powershell
+'{"id":"req-1","kind":"health-check","timestamp":"2026-03-10T00:00:00.000Z","payload":{}}' | & 'C:/Program Files/dotnet/dotnet.exe' run --project native/win32-helper/TextBridge.Win32Helper.csproj
+```
 
 预期：
 
-- helper 从 `idle` 变为 `ready` 或曾短暂经过 `starting`
-- 最近执行记录出现 `quick-translation`
+- `stdout` 有一条 `ok: true` 的 JSON
+- `payload.capabilities` 至少包含 `health-check`
+- `stderr` 有 helper 启动和请求处理日志
+
+### 2. Clipboard-write smoke
+
+```powershell
+'{"id":"req-2","kind":"clipboard-write","timestamp":"2026-03-10T00:00:00.000Z","payload":{"text":"translated"}}' | & 'C:/Program Files/dotnet/dotnet.exe' run --project native/win32-helper/TextBridge.Win32Helper.csproj
+```
+
+预期：
+
+- `stdout` 返回 `kind: "clipboard-write"` 且 `ok: true`
+- 剪贴板文本被更新为 `translated`
+
+### 3. 记事本闭环验证（已通过）
+
+1. 启动 TextBridge，设置 Provider 为 `mock`
+2. 打开 Windows 记事本
+3. 输入 `hello world`
+4. 只选中 `world`
+5. 触发快速翻译快捷键
+
+预期结果优先级：
+
+- 首选：原输入框被写回
+- 次选：自动写回失败，但 popup fallback 触发，剪贴板中可见 `[Mock] world`
+
+运行结束后检查：
+
+- 运行状态面板新增一条 recent execution
 - `captureMethod` 为 `uia` 或 `clipboard`
-- `writeBackMethod` 为 `replace-selection`、`paste-translation` 或 `popup-fallback`
+- `writeBackMethod` 为 `replace-selection` / `paste-translation` / `popup-fallback`
+- 若失败，能看到明确 `errorCode`
 
-如果直接回写失败，也应满足：
+当前基线记录：
 
-- 最近执行状态为 `fallback-required`
-- 译文已被复制到剪贴板
-- 运行状态能看到最近错误信息
+- `2026-03-19` 已观察到两次 `capture-text(method=uia)` 成功后，直接 `write-text(method=replace-selection)` 成功
+- 主日志关键行显示：`processName=Notepad`、`framework=Win32`、`selectionMatchedExpected=true`、`targetStable=true`、`valueChanged=true`、`translatedTextDetected=true`
 
-### 3. 验证剪贴板 fallback
+### 4. 系统设置搜索框验证
 
-1. 选择一个 `UIA` 选区能力较弱但允许复制的文本框。
-2. 选中文本。
-3. 触发快速翻译快捷键。
-
-预期：
-
-- `captureMethod` 最终可能变为 `clipboard`
-- helper 日志中可看到复制快捷键与剪贴板读取相关记录
-
-### 4. 验证写回 fallback
-
-1. 选择一个可粘贴但不易安全做局部替换的输入框。
-2. 触发快速翻译。
+1. 打开 Windows 设置
+2. 在搜索框输入 `hello world`
+3. 只选中 `world`
+4. 触发快速翻译快捷键
 
 预期：
 
-- `replace-selection` 失败时不应整框覆盖
-- `paste-translation` 若成功，最近执行应标记为 `completed`
-- 若 `paste-translation` 也失败，应进入 `popup-fallback`
+- 优先观察是否直接 `replace-selection`
+- 若失败，至少应保留结构化失败信息，不应静默无结果
+- 重点记录 `framework`、`windowClassName`、`controlType`
 
-### 5. 验证权限边界
+### 5. 无选区负向验证
 
-1. 以管理员权限启动一个目标窗口。
-2. 保持 TextBridge 以普通权限运行。
-3. 在该目标窗口中尝试触发翻译。
+1. 打开标准输入框
+2. 输入文本但不要选择任何字符
+3. 触发快速翻译快捷键
+
+预期：
+
+- 捕获失败
+- `errorCode` 倾向为 `TEXT_CAPTURE_NO_SELECTION`
+- recent execution 状态为 `failed`
+
+### 6. 权限不匹配负向验证
+
+1. 以管理员身份启动一个目标窗口
+2. 保持 TextBridge 为普通权限
+3. 在该窗口输入并选中文本
+4. 触发快捷键
 
 预期：
 
 - 不应静默成功
-- 运行状态和日志里应出现明确的 helper 错误
-- 这类窗口当前不属于首版承诺范围
+- recent execution 或日志里应有结构化失败信息
+- compatibility matrix 记录为 `Blocked`
 
-## 失败样本记录方式
+## Expected Mock Output
 
-当验证失败时，至少记录以下信息：
+使用 `mock` provider 时，返回文本形如：
 
-- 日期与时间
-- 目标应用名称与版本
-- 窗口标题
-- 选中文本是否明确存在
-- 按下的快捷键
-- 运行状态面板中的：
-  - `helperState`
-  - `helperLastErrorCode`
-  - 最近执行状态
-- `diagnostic.log` 相关片段
-- `win32-helper.log` 相关片段
-
-## 推荐验证命令
-
-在准备提测或阶段收口前，建议依次执行：
-
-```powershell
-npm test
-npm run typecheck
-dotnet test native/win32-helper/TextBridge.Win32Helper.Tests/TextBridge.Win32Helper.Tests.csproj
-npm run build
+```text
+[Mock] hello world
 ```
 
-## 当前已知缺口
+这能帮助你区分“provider 返回值正确”和“写回链路是否正确”。
 
-- context translation 仍缺完整的独立弹窗交互与 IPC 回传
-- fallback 结果页目前仍以主窗口承接，不是完整的独立弹窗流
-- 首版完成标准以标准可编辑控件为主，观察范围和不承诺范围请参考兼容矩阵
+## Failure Triage
+
+### 快捷键没反应
+
+优先检查：
+
+- 设置页显示的已注册快捷键
+- `shortcutService.applySettings()` 是否在保存设置后被重新执行
+- recent execution 是否完全没有新记录
+
+### helper 没起来
+
+优先检查：
+
+- 运行状态面板中的 `helperState`
+- `diagnostic.log` 中是否有 helper session ready / timeout / unavailable
+- 当前环境是否能定位 `dotnet`
+
+### capture 失败
+
+优先检查 helper 日志中的：
+
+- `Handling request 'capture-text'`
+- diagnostics 里的 `apiAttempted`
+- diagnostics 里的 `windowClassName` / `processName`
+
+### write-back 失败
+
+优先检查：
+
+- 是否先收到 `replace-selection` 失败再退到 `paste-translation`
+- 若最终退到 popup fallback，剪贴板是否保留结果
+- 若是多行文本目标，额外检查 diagnostics 里的 `textComparisonMode=line-ending-normalized`，避免把 `CRLF/LF` 差异误判为真实写回失败
+
+## Recording Rules
+
+每跑完一个目标应用，都把结果同步填写到：
+
+- [2026-03-08-windows-text-translation-compatibility-matrix.md](./2026-03-08-windows-text-translation-compatibility-matrix.md)
+
+至少记录：
+
+- 目标应用
+- 成功/失败/兜底
+- helperState
+- errorCode
+- 关键日志摘要
+
+## Known Gap
+
+当前 `context` 快捷键已经接入主流程，但没有独立的上下文输入弹窗；它会在没有额外指令的情况下继续翻译。这不影响“Windows 任意输入框通过快捷键触发翻译能力”的快速验证，但它仍然是后续 UI 工作项。

@@ -166,6 +166,7 @@ public sealed class StdIoHost
         {
             var method = TryGetMethod(request.Payload);
             var text = TryGetText(request.Payload);
+            var expectedSourceText = TryGetOptionalString(request.Payload, "expectedSourceText");
 
             if (string.IsNullOrWhiteSpace(method) || text is null)
             {
@@ -179,6 +180,7 @@ public sealed class StdIoHost
             var result = await _writeTextService.WriteAsync(
                 text,
                 method,
+                expectedSourceText,
                 cancellationToken);
             var payload = result.ToPayload();
 
@@ -207,6 +209,7 @@ public sealed class StdIoHost
             var result = await _writeTextService.WriteAsync(
                 text,
                 "clipboard-write",
+                null,
                 cancellationToken);
             var payload = result.ToPayload();
 
@@ -241,8 +244,13 @@ public sealed class StdIoHost
 
     private static string? TryGetText(JsonElement? payload)
     {
+        return TryGetOptionalString(payload, "text");
+    }
+
+    private static string? TryGetOptionalString(JsonElement? payload, string propertyName)
+    {
         if (payload is not { ValueKind: JsonValueKind.Object } payloadObject ||
-            !payloadObject.TryGetProperty("text", out var textProperty) ||
+            !payloadObject.TryGetProperty(propertyName, out var textProperty) ||
             textProperty.ValueKind != JsonValueKind.String)
         {
             return null;

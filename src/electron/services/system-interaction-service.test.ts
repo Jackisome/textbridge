@@ -114,6 +114,48 @@ describe('createSystemInteractionService', () => {
     });
   });
 
+  it('passes the expected source text through both write-back attempts', async () => {
+    const adapter = {
+      captureText: vi.fn(),
+      writeText: vi
+        .fn()
+        .mockResolvedValueOnce({
+          success: false,
+          method: 'replace-selection',
+          errorCode: 'WRITE_BACK_UNSUPPORTED',
+          errorMessage: 'Replace selection is not available.'
+        })
+        .mockResolvedValueOnce({
+          success: true,
+          method: 'paste-translation'
+        }),
+      copyToClipboard: vi.fn().mockResolvedValue(undefined)
+    };
+    const service = createSystemInteractionService({
+      adapter
+    });
+
+    await expect(
+      service.writeTranslatedText('你好', DEFAULT_SETTINGS, 'world')
+    ).resolves.toEqual({
+      success: true,
+      method: 'paste-translation'
+    });
+
+    expect(adapter.writeText).toHaveBeenNthCalledWith(
+      1,
+      '你好',
+      'replace-selection',
+      'world'
+    );
+    expect(adapter.writeText).toHaveBeenNthCalledWith(
+      2,
+      '你好',
+      'paste-translation',
+      'world'
+    );
+  });
+
   it('prefers helper clipboard-write when copying fallback text', async () => {
     const adapter = {
       captureText: vi.fn(),

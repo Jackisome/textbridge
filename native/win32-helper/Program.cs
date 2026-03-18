@@ -12,6 +12,7 @@ public static class Program
         try
         {
             logger.Info("Starting helper host.");
+            var automationFacade = new AutomationFacade();
 
             var host = new StdIoHost(
                 Console.In,
@@ -19,12 +20,15 @@ public static class Program
                 logger,
                 new HealthCheckService(),
                 new CaptureTextService(
-                    new AutomationFacade(),
+                    automationFacade,
                     new ClipboardTextService(),
-                    new InputSimulationService()),
+                    new InputSimulationService(),
+                    focusedElementInspectionService: automationFacade),
                 new WriteTextService(
                     new ClipboardTextService(),
-                    new InputSimulationService()));
+                    new InputSimulationService(),
+                    automationFacade,
+                    automationFacade));
 
             await host.RunAsync();
 

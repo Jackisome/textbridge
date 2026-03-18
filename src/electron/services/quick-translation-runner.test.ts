@@ -6,6 +6,11 @@ describe('createQuickTranslationRunner', () => {
   it('captures, translates, writes back, and returns a completed execution report', async () => {
     const popupCalls: unknown[] = [];
     const clipboardCopies: string[] = [];
+    const writeCalls: Array<{
+      text: string;
+      settings: unknown;
+      expectedSourceText: string | undefined;
+    }> = [];
 
     const runner = createQuickTranslationRunner({
       settingsService: {
@@ -21,7 +26,12 @@ describe('createQuickTranslationRunner', () => {
             text: 'Hello world'
           };
         },
-        async writeTranslatedText() {
+        async writeTranslatedText(text, settings, expectedSourceText) {
+          writeCalls.push({
+            text,
+            settings,
+            expectedSourceText
+          });
           return {
             success: true,
             method: 'replace-selection'
@@ -66,6 +76,13 @@ describe('createQuickTranslationRunner', () => {
 
     expect(clipboardCopies).toEqual([]);
     expect(popupCalls).toEqual([]);
+    expect(writeCalls).toEqual([
+      {
+        text: '你好，世界',
+        settings: DEFAULT_SETTINGS,
+        expectedSourceText: 'Hello world'
+      }
+    ]);
   });
 
   it('shows popup fallback and copies the translation when write-back falls back to popup', async () => {
@@ -135,5 +152,80 @@ describe('createQuickTranslationRunner', () => {
 
     expect(clipboardCopies).toEqual(['你好，世界']);
     expect(popupCalls).toEqual([{ translatedText: '你好，世界' }]);
+  });
+
+  it('preserves the raw captured selection for write-back verification when translation trims whitespace', async () => {
+    const translationRequests: Array<{ text: string }> = [];
+    const writeCalls: Array<{
+      text: string;
+      expectedSourceText: string | undefined;
+    }> = [];
+
+    const runner = createQuickTranslationRunner({
+      settingsService: {
+        async getSettings() {
+          return DEFAULT_SETTINGS;
+        }
+      },
+      systemInteractionService: {
+        async captureSelectedText() {
+          return {
+            success: true,
+            method: 'uia',
+            text: ' world'
+          };
+        },
+        async writeTranslatedText(text, _settings, expectedSourceText) {
+          writeCalls.push({
+            text,
+            expectedSourceText
+          });
+
+          return {
+            success: true,
+            method: 'paste-translation'
+          };
+        },
+        async copyToClipboard() {}
+      },
+      translationProviderService: {
+        async translateWithSettings(_settings, request) {
+          translationRequests.push({
+            text: request.text
+          });
+
+          return {
+            translatedText: '[Mock] world',
+            sourceLanguage: 'auto',
+            targetLanguage: 'zh-CN',
+            detectedSourceLanguage: 'en',
+            provider: 'mock'
+          };
+        }
+      },
+      createReportId: () => 'report-3',
+      now: () => '2026-03-08T10:10:00.000Z'
+    });
+
+    await expect(runner.run()).resolves.toEqual({
+      id: 'report-3',
+      workflow: 'quick-translation',
+      status: 'completed',
+      startedAt: '2026-03-08T10:10:00.000Z',
+      completedAt: '2026-03-08T10:10:00.000Z',
+      provider: 'mock',
+      captureMethod: 'uia',
+      writeBackMethod: 'paste-translation',
+      sourceTextLength: 6,
+      translatedTextLength: 12
+    });
+
+    expect(translationRequests).toEqual([{ text: 'world' }]);
+    expect(writeCalls).toEqual([
+      {
+        text: '[Mock] world',
+        expectedSourceText: ' world'
+      }
+    ]);
   });
 });

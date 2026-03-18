@@ -15,6 +15,7 @@ export type Win32Request =
       kind: 'write-text';
       method: Win32WriteMethod;
       text: string;
+      expectedSourceText?: string;
     };
 
 export type Win32Response =

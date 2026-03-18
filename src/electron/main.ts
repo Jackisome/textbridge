@@ -15,6 +15,7 @@ import { createShortcutService } from './services/shortcut-service';
 import { createSystemInteractionService } from './services/system-interaction-service';
 import { createTrayService } from './services/tray-service';
 import { createTranslationProviderService } from './services/translation-provider-service';
+import { releaseVisibleMainWindow } from './services/window-focus-guard';
 import { createWindowService } from './services/window-service';
 
 const rendererDevUrl = process.env.VITE_DEV_SERVER_URL;
@@ -49,24 +50,24 @@ const shortcutService = createShortcutService({
   registrar: globalShortcut,
   handlers: {
     onQuickTranslate() {
-      if (!quickTranslationRunner) {
+      const runner = quickTranslationRunner;
+
+      if (!runner) {
         void windowService.showMainWindow();
         return;
       }
 
-      void quickTranslationRunner.run().catch((error) => {
-        void handleRunnerFailure('quick-translation', error);
-      });
+      void runTranslationWorkflow('quick-translation', () => runner.run());
     },
     onContextTranslate() {
-      if (!contextTranslationRunner) {
+      const runner = contextTranslationRunner;
+
+      if (!runner) {
         void windowService.showMainWindow();
         return;
       }
 
-      void contextTranslationRunner.run().catch((error) => {
-        void handleRunnerFailure('context-translation', error);
-      });
+      void runTranslationWorkflow('context-translation', () => runner.run());
     }
   }
 });
@@ -194,4 +195,29 @@ async function handleRunnerFailure(
       : `${workflow} failed with a non-error value.`
   );
   await windowService.showMainWindow();
+}
+
+async function runTranslationWorkflow(
+  workflow: 'quick-translation' | 'context-translation',
+  execute: () => Promise<unknown>
+): Promise<void> {
+  await releaseMainWindowFocus();
+
+  try {
+    await execute();
+  } catch (error) {
+    await handleRunnerFailure(workflow, error);
+  }
+}
+
+async function releaseMainWindowFocus(): Promise<void> {
+  await releaseVisibleMainWindow(
+    windowService.getMainWindow(),
+    async (delayMs) => {
+      await new Promise((resolve) => {
+        setTimeout(resolve, delayMs);
+      });
+    },
+    250
+  );
 }

@@ -20,7 +20,11 @@ export interface QuickTranslationRunnerSystemInteractionService {
     errorCode?: string;
     errorMessage?: string;
   }>;
-  writeTranslatedText(text: string, settings?: TranslationClientSettings): Promise<{
+  writeTranslatedText(
+    text: string,
+    settings?: TranslationClientSettings,
+    expectedSourceText?: string
+  ): Promise<{
     success: boolean;
     method: ExecutionReport['writeBackMethod'];
     errorCode?: string;
@@ -78,6 +82,7 @@ export function createQuickTranslationRunner({
       const settings = await settingsService.getSettings();
       const startedAt = now();
       const captureResult = await systemInteractionService.captureSelectedText(settings);
+      const sourceText = captureResult.text ?? '';
 
       if (!captureResult.success) {
         const report: ExecutionReport = {
@@ -98,7 +103,7 @@ export function createQuickTranslationRunner({
       }
 
       const translationRequestResult = executeQuickTranslation({
-        text: captureResult.text ?? '',
+        text: sourceText,
         settings
       });
 
@@ -117,7 +122,7 @@ export function createQuickTranslationRunner({
         };
 
         reportRecorder?.record(report, {
-          sourceText: captureResult.text
+          sourceText
         });
         return report;
       }
@@ -128,7 +133,8 @@ export function createQuickTranslationRunner({
       );
       const writeBackResult = await systemInteractionService.writeTranslatedText(
         translationResult.translatedText,
-        settings
+        settings,
+        sourceText
       );
 
       const baseReport: ExecutionReport = {
@@ -140,13 +146,13 @@ export function createQuickTranslationRunner({
         provider: translationResult.provider,
         captureMethod: captureResult.method,
         writeBackMethod: writeBackResult.method,
-        sourceTextLength: translationRequestResult.request.text.length,
+        sourceTextLength: sourceText.length,
         translatedTextLength: translationResult.translatedText.length
       };
 
       if (writeBackResult.success) {
         reportRecorder?.record(baseReport, {
-          sourceText: translationRequestResult.request.text,
+          sourceText,
           translatedText: translationResult.translatedText
         });
         return baseReport;
@@ -163,12 +169,12 @@ export function createQuickTranslationRunner({
         await systemInteractionService.copyToClipboard(translationResult.translatedText);
         await popupFallbackPresenter.showResult({
           translatedText: translationResult.translatedText,
-          sourceText: translationRequestResult.request.text,
+          sourceText,
           report: fallbackReport
         });
 
         reportRecorder?.record(fallbackReport, {
-          sourceText: translationRequestResult.request.text,
+          sourceText,
           translatedText: translationResult.translatedText
         });
         return fallbackReport;
@@ -181,7 +187,7 @@ export function createQuickTranslationRunner({
       };
 
       reportRecorder?.record(report, {
-        sourceText: translationRequestResult.request.text,
+        sourceText,
         translatedText: translationResult.translatedText
       });
       return report;

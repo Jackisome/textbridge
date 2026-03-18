@@ -56,30 +56,36 @@ describe('createWin32Adapter', () => {
   });
 
   it('maps helper write responses into WriteBackResult', async () => {
+    const session = {
+      send: vi.fn().mockResolvedValue({
+        id: 'req-3',
+        kind: 'write-text',
+        ok: false,
+        payload: {
+          method: 'replace-selection'
+        },
+        error: {
+          code: 'ACCESS_DENIED',
+          message: 'The target control rejected replacement.'
+        }
+      })
+    };
     const adapter = createWin32Adapter({
-      helperSession: {
-        send: vi.fn().mockResolvedValue({
-          id: 'req-3',
-          kind: 'write-text',
-          ok: false,
-          payload: {
-            method: 'replace-selection'
-          },
-          error: {
-            code: 'ACCESS_DENIED',
-            message: 'The target control rejected replacement.'
-          }
-        })
-      }
+      helperSession: session
     });
 
     await expect(
-      adapter.writeText('你好，世界', 'replace-selection')
+      adapter.writeText('你好，世界', 'replace-selection', 'Hello world')
     ).resolves.toEqual({
       success: false,
       method: 'replace-selection',
       errorCode: 'ACCESS_DENIED',
       errorMessage: 'The target control rejected replacement.'
+    });
+    expect(session.send).toHaveBeenCalledWith('write-text', {
+      method: 'replace-selection',
+      text: '你好，世界',
+      expectedSourceText: 'Hello world'
     });
   });
 

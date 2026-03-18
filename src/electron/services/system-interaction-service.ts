@@ -17,7 +17,8 @@ export interface SystemInteractionService {
   captureSelectedText(settings?: TranslationClientSettings): Promise<TextCaptureResult>;
   writeTranslatedText(
     text: string,
-    settings?: TranslationClientSettings
+    settings?: TranslationClientSettings,
+    expectedSourceText?: string
   ): Promise<WriteBackResult>;
   copyToClipboard(text: string): Promise<void>;
 }
@@ -66,7 +67,8 @@ export function createSystemInteractionService({
     },
     async writeTranslatedText(
       text: string,
-      settings?: TranslationClientSettings
+      settings?: TranslationClientSettings,
+      expectedSourceText?: string
     ): Promise<WriteBackResult> {
       if (settings?.outputMode === 'show-popup') {
         return {
@@ -80,7 +82,7 @@ export function createSystemInteractionService({
       const attempts: WriteBackResult[] = [];
       const initialMethod: Win32WriteMethod = 'replace-selection';
 
-      attempts.push(await adapter.writeText(text, initialMethod));
+      attempts.push(await adapter.writeText(text, initialMethod, expectedSourceText));
 
       const decision = decideWriteBackFallback({
         attempts,
@@ -89,7 +91,9 @@ export function createSystemInteractionService({
       });
 
       if (decision.action === 'retry') {
-        attempts.push(await adapter.writeText(text, decision.method));
+        attempts.push(
+          await adapter.writeText(text, decision.method, expectedSourceText)
+        );
 
         const followUpDecision = decideWriteBackFallback({
           attempts,
