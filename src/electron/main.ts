@@ -15,7 +15,6 @@ import { createShortcutService } from './services/shortcut-service';
 import { createSystemInteractionService } from './services/system-interaction-service';
 import { createTrayService } from './services/tray-service';
 import { createTranslationProviderService } from './services/translation-provider-service';
-import { releaseVisibleMainWindow } from './services/window-focus-guard';
 import { createWindowService } from './services/window-service';
 
 const rendererDevUrl = process.env.VITE_DEV_SERVER_URL;
@@ -201,8 +200,6 @@ async function runTranslationWorkflow(
   workflow: 'quick-translation' | 'context-translation',
   execute: () => Promise<unknown>
 ): Promise<void> {
-  await releaseMainWindowFocus();
-
   try {
     await execute();
   } catch (error) {
@@ -210,14 +207,3 @@ async function runTranslationWorkflow(
   }
 }
 
-async function releaseMainWindowFocus(): Promise<void> {
-  await releaseVisibleMainWindow(
-    windowService.getMainWindow(),
-    async (delayMs) => {
-      await new Promise((resolve) => {
-        setTimeout(resolve, delayMs);
-      });
-    },
-    250
-  );
-}

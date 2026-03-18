@@ -107,11 +107,7 @@ export function SettingsPage({
 
       <div className="settings-main">
         <header className="settings-header">
-          <div>
-            <p className="eyebrow">桌面客户端设置</p>
-            <h2>翻译流程与系统行为</h2>
-            <p className="header-copy">点击快捷键框后直接录制组合键，保存按钮会把当前配置写入本地。</p>
-          </div>
+          <h2>翻译流程与系统行为</h2>
 
           <div className="header-actions">
             <button type="button" className="secondary-button" onClick={onReset}>
@@ -218,8 +214,8 @@ export function SettingsPage({
                     onSettingChange('captureMode', event.target.value as TranslationClientSettings['captureMode'])
                   }
                 >
-                  <option value="uia-first">优先 UIA</option>
-                  <option value="clipboard-first">优先剪贴板</option>
+                  <option value="uia-first">优先 UIA — 系统 API 直接读取，不污染剪贴板</option>
+                  <option value="clipboard-first">优先剪贴板 — 模拟复制，兼容性好但覆盖剪贴板</option>
                 </select>
               </label>
             </div>

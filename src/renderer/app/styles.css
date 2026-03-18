@@ -180,39 +180,40 @@ h3 {
 }
 
 .settings-header {
+  position: sticky;
+  top: 20px;
+  z-index: 10;
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  gap: 20px;
-  padding: 28px 30px;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 20px;
   border: 1px solid var(--line);
-  border-radius: 28px;
+  border-radius: 20px;
   background: var(--surface);
   box-shadow: var(--shadow);
 }
 
 .settings-header h2 {
-  margin-top: 10px;
-  font-size: clamp(1.8rem, 1vw + 1.4rem, 2.4rem);
+  font-size: clamp(1.2rem, 1vw + 1rem, 1.6rem);
 }
 
 .header-copy {
-  margin-top: 12px;
-  max-width: 720px;
+  display: none;
 }
 
 .header-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 8px;
 }
 
 .primary-button,
 .secondary-button {
-  min-width: 132px;
-  min-height: 48px;
-  padding: 0 18px;
-  border-radius: 16px;
+  min-width: 96px;
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 12px;
   border: 1px solid var(--line-strong);
   cursor: pointer;
   transition:
