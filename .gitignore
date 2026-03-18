@@ -28,3 +28,6 @@ yarn-error.log
 
 # Electron builder cache
 .electron-builder-cache/
+
+# VS Code settings (machine-specific)
+.vscode/
