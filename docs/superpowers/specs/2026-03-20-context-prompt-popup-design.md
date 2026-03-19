@@ -60,7 +60,7 @@ User selects text in another app and invokes the existing `context-translation` 
 
 ### 4.3 Interaction Rules
 
-- `Enter` submits
+- `Enter` submits when the textarea is not in IME composition
 - `Shift+Enter` inserts a newline
 - `Esc` cancels
 - clicking outside the popup cancels when the platform/window manager produces a reliable blur signal
@@ -204,7 +204,7 @@ Create a dedicated popup `BrowserWindow` with these properties:
 - compact size tuned for prompt entry
 - `skipTaskbar: true`
 - `autoHideMenuBar: true`
-- `alwaysOnTop: true` for the session lifetime only
+- `alwaysOnTop: true` for the session lifetime only, as a best-effort visual hint rather than a correctness requirement
 - renderer route or query string identifying `context-popup`
 
 When the session resolves:
@@ -373,7 +373,8 @@ These fields are diagnostic metadata only and should not expose full selected te
 ### 12.3 Renderer Tests
 
 - textarea auto-focus
-- `Enter` submits
+- `Enter` submits when IME composition is not active
+- `Enter` does not submit while IME composition is active
 - `Shift+Enter` inserts a newline instead of submitting
 - `Esc` cancels
 - cancel button cancels
