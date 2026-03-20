@@ -33,7 +33,14 @@ export interface PromptClearedResult {
   status: 'cleared';
 }
 
+export interface PromptSessionAlreadyActiveError {
+  status: 'already-active';
+  message: string;
+}
+
 export type PromptSessionResult =
   | PromptSubmittedResult
   | PromptCancelledResult
   | PromptClearedResult;
+
+export type PromptSessionOpenError = PromptSessionAlreadyActiveError;

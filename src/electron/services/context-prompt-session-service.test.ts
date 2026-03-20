@@ -43,6 +43,104 @@ describe('createContextPromptSessionService', () => {
     expect(service.getActive()).toBeNull();
   });
 
+  it('rejects repeated open calls while a prompt session is active', async () => {
+    const service = createContextPromptSessionService();
+    const pending = service.open({
+      sourceText: 'first',
+      anchor: { kind: 'cursor' }
+    });
+
+    await expect(
+      service.open({
+        sourceText: 'second',
+        anchor: { kind: 'window-rect' }
+      })
+    ).rejects.toMatchObject({
+      status: 'already-active'
+    });
+
+    service.submit({
+      instructions: 'Finish the first session.'
+    });
+
+    await expect(pending).resolves.toEqual({
+      status: 'submitted',
+      instructions: 'Finish the first session.'
+    });
+  });
+
+  it('treats submit, cancel, and clear after settle as no-op', async () => {
+    const service = createContextPromptSessionService();
+    const pending = service.open({
+      sourceText: 'settle me',
+      anchor: { kind: 'cursor' }
+    });
+
+    service.submit({
+      instructions: 'Use plain language.'
+    });
+
+    await expect(pending).resolves.toEqual({
+      status: 'submitted',
+      instructions: 'Use plain language.'
+    });
+
+    expect(() =>
+      service.submit({
+        instructions: 'ignored'
+      })
+    ).not.toThrow();
+    expect(() => service.cancel()).not.toThrow();
+    expect(() => service.clear()).not.toThrow();
+    expect(service.getActive()).toBeNull();
+  });
+
+  it('returns a defensive copy from getActive', () => {
+    const service = createContextPromptSessionService();
+
+    service.open({
+      sourceText: 'mutable',
+      anchor: {
+        kind: 'selection-rect',
+        bounds: {
+          x: 10,
+          y: 20,
+          width: 30,
+          height: 40
+        },
+        displayId: 'display-1'
+      }
+    });
+
+    const active = service.getActive();
+
+    expect(active).not.toBeNull();
+
+    if (!active) {
+      return;
+    }
+
+    active.sourceText = 'changed';
+    active.anchor.kind = 'cursor';
+    if (active.anchor.bounds) {
+      active.anchor.bounds.x = 999;
+    }
+
+    expect(service.getActive()).toEqual({
+      sourceText: 'mutable',
+      anchor: {
+        kind: 'selection-rect',
+        bounds: {
+          x: 10,
+          y: 20,
+          width: 30,
+          height: 40
+        },
+        displayId: 'display-1'
+      }
+    });
+  });
+
   it('clear resolves the active prompt session as cleared', async () => {
     const service = createContextPromptSessionService();
     const pending = service.open({

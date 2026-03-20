@@ -1,6 +1,7 @@
 import type {
   PromptAnchor,
   PromptSession,
+  PromptSessionAlreadyActiveError,
   PromptSessionResult,
   PromptSubmission,
 } from '../../shared/types/context-prompt';
@@ -20,7 +21,7 @@ export function createContextPromptSessionService(): ContextPromptSessionService
 
   function open(session: PromptSession): Promise<PromptSessionResult> {
     if (activePromise) {
-      return activePromise;
+      return Promise.reject(createPromptSessionAlreadyActiveError());
     }
 
     activeSession = clonePromptSession(session);
@@ -75,6 +76,13 @@ export function createContextPromptSessionService(): ContextPromptSessionService
     activeSession = null;
     activeResolve = null;
     activePromise = null;
+  }
+
+  function createPromptSessionAlreadyActiveError(): PromptSessionAlreadyActiveError {
+    return {
+      status: 'already-active',
+      message: 'A context prompt session is already active.'
+    };
   }
 
   return {
