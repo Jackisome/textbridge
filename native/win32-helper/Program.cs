@@ -24,7 +24,8 @@ public static class Program
                 automationFacade,
                 automationFacade);
             var captureSelectionContextService = new CaptureSelectionContextService(
-                automationFacade);
+                automationFacade,
+                captureTextService);
             var restoreTargetService = new RestoreTargetService(
                 automationFacade);
 

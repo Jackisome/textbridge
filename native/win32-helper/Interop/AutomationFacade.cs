@@ -366,9 +366,12 @@ public sealed class AutomationFacade :
             foregroundWindow);
         var restoreTargetToken = CreateRestoreTargetToken(foregroundWindow);
         var capabilities = new SelectionContextCapabilitiesSnapshot(
-            CanPositionPromptNearSelection: !string.Equals(anchor.Kind, "unknown", StringComparison.Ordinal),
+            CanPositionPromptNearSelection:
+                string.Equals(anchor.Kind, "selection-rect", StringComparison.Ordinal) ||
+                string.Equals(anchor.Kind, "control-rect", StringComparison.Ordinal) ||
+                string.Equals(anchor.Kind, "window-rect", StringComparison.Ordinal),
             CanRestoreTargetAfterPrompt: !string.IsNullOrWhiteSpace(restoreTargetToken),
-            CanAutoWriteBackAfterPrompt: !string.IsNullOrWhiteSpace(restoreTargetToken));
+            CanAutoWriteBackAfterPrompt: false);
 
         diagnostics["anchorKind"] = anchor.Kind;
         if (anchor.Bounds is not null)
@@ -864,7 +867,7 @@ public sealed class AutomationFacade :
             TryGetElementBounds(focusedElement, out var elementBounds))
         {
             return new PromptAnchorSnapshot(
-                "selection-rect",
+                "control-rect",
                 elementBounds.X,
                 elementBounds.Y,
                 elementBounds.Width,
@@ -941,7 +944,7 @@ public sealed class AutomationFacade :
 
     private static string? CreateRestoreTargetToken(IntPtr windowHandle)
     {
-        return windowHandle == IntPtr.Zero
+        return windowHandle == IntPtr.Zero || !IsWindow(windowHandle)
             ? null
             : $"hwnd:{windowHandle.ToInt64()}";
     }

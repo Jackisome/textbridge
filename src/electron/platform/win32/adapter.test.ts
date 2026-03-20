@@ -121,6 +121,158 @@ describe('createWin32Adapter', () => {
     });
   });
 
+  it('maps degraded selection-context metadata conservatively for clipboard capture', async () => {
+    const adapter = createWin32Adapter({
+      helperSession: {
+        send: vi.fn().mockResolvedValue({
+          id: 'req-2d',
+          kind: 'capture-selection-context',
+          ok: true,
+          payload: {
+            method: 'clipboard',
+            text: 'world',
+            anchor: {
+              kind: 'unknown'
+            },
+            capabilities: {
+              canPositionPromptNearSelection: false,
+              canRestoreTargetAfterPrompt: false,
+              canAutoWriteBackAfterPrompt: false
+            }
+          },
+          error: null
+        })
+      }
+    });
+
+    await expect(adapter.captureSelectionContext?.('clipboard')).resolves.toEqual({
+      success: true,
+      data: {
+        sourceText: 'world',
+        captureMethod: 'clipboard',
+        anchor: {
+          kind: 'unknown'
+        },
+        restoreTarget: null,
+        capabilities: {
+          canPositionPromptNearSelection: false,
+          canRestoreTargetAfterPrompt: false,
+          canAutoWriteBackAfterPrompt: false
+        }
+      }
+    });
+  });
+
+  it('preserves degraded anchor kinds such as control-rect and window-rect', async () => {
+    const session = {
+      send: vi
+        .fn()
+        .mockResolvedValueOnce({
+          id: 'req-2e',
+          kind: 'capture-selection-context',
+          ok: true,
+          payload: {
+            method: 'uia',
+            text: 'world',
+            anchor: {
+              kind: 'control-rect',
+              bounds: {
+                x: 20,
+                y: 30,
+                width: 90,
+                height: 25
+              }
+            },
+            capabilities: {
+              canPositionPromptNearSelection: true,
+              canRestoreTargetAfterPrompt: true,
+              canAutoWriteBackAfterPrompt: false
+            }
+          },
+          error: null
+        })
+        .mockResolvedValueOnce({
+          id: 'req-2f',
+          kind: 'capture-selection-context',
+          ok: true,
+          payload: {
+            method: 'uia',
+            text: 'world',
+            anchor: {
+              kind: 'window-rect',
+              bounds: {
+                x: 100,
+                y: 120,
+                width: 500,
+                height: 300
+              }
+            },
+            capabilities: {
+              canPositionPromptNearSelection: true,
+              canRestoreTargetAfterPrompt: false,
+              canAutoWriteBackAfterPrompt: false
+            }
+          },
+          error: null
+        })
+    };
+    const adapter = createWin32Adapter({
+      helperSession: session
+    });
+
+    await expect(adapter.captureSelectionContext?.('uia')).resolves.toMatchObject({
+      success: true,
+      data: {
+        anchor: {
+          kind: 'control-rect'
+        },
+        capabilities: {
+          canAutoWriteBackAfterPrompt: false
+        }
+      }
+    });
+    await expect(adapter.captureSelectionContext?.('uia')).resolves.toMatchObject({
+      success: true,
+      data: {
+        anchor: {
+          kind: 'window-rect'
+        },
+        capabilities: {
+          canRestoreTargetAfterPrompt: false,
+          canAutoWriteBackAfterPrompt: false
+        }
+      }
+    });
+  });
+
+  it('maps selection-context helper failures without leaking degraded payloads as success', async () => {
+    const adapter = createWin32Adapter({
+      helperSession: {
+        send: vi.fn().mockResolvedValue({
+          id: 'req-2g',
+          kind: 'capture-selection-context',
+          ok: false,
+          payload: {
+            method: 'uia',
+            anchor: {
+              kind: 'control-rect'
+            }
+          },
+          error: {
+            code: 'TEXT_CAPTURE_NO_SELECTION',
+            message: 'The focused control does not expose a selected text range.'
+          }
+        })
+      }
+    });
+
+    await expect(adapter.captureSelectionContext?.('uia')).resolves.toEqual({
+      success: false,
+      errorCode: 'TEXT_CAPTURE_NO_SELECTION',
+      errorMessage: 'The focused control does not expose a selected text range.'
+    });
+  });
+
   it('maps helper restore-target responses into restore results', async () => {
     const session = {
       send: vi.fn().mockResolvedValue({

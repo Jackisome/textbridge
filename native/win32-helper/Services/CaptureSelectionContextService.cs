@@ -6,30 +6,62 @@ namespace TextBridge.Win32Helper.Services;
 public sealed class CaptureSelectionContextService
 {
     private readonly ISelectionContextAutomationFacade _automationFacade;
+    private readonly CaptureTextService? _captureTextService;
 
     public CaptureSelectionContextService(
-        ISelectionContextAutomationFacade automationFacade)
+        ISelectionContextAutomationFacade automationFacade,
+        CaptureTextService? captureTextService = null)
     {
         _automationFacade = automationFacade;
+        _captureTextService = captureTextService;
     }
 
-    public Task<SelectionContextCaptureResult> CaptureAsync(
+    public async Task<SelectionContextCaptureResult> CaptureAsync(
         string method,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (!string.Equals(method, "uia", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(method, "clipboard", StringComparison.OrdinalIgnoreCase))
         {
-            return Task.FromResult(
-                SelectionContextCaptureResult.Failure(
+            if (_captureTextService is null)
+            {
+                return SelectionContextCaptureResult.Failure(
                     method,
                     "TEXT_CAPTURE_UNSUPPORTED",
-                    $"Unsupported selection-context capture method '{method}'.",
-                    new JsonObject()));
+                    "Clipboard selection-context capture is unavailable.",
+                    new JsonObject());
+            }
+
+            var captureResult = await _captureTextService.CaptureAsync(
+                "clipboard",
+                cancellationToken);
+
+            return captureResult.Ok
+                ? SelectionContextCaptureResult.Success(
+                    "clipboard",
+                    captureResult.Text ?? string.Empty,
+                    new PromptAnchorSnapshot("unknown"),
+                    restoreTargetToken: null,
+                    SelectionContextCapabilitiesSnapshot.None,
+                    captureResult.Diagnostics)
+                : SelectionContextCaptureResult.Failure(
+                    "clipboard",
+                    captureResult.ErrorCode ?? "TEXT_CAPTURE_CLIPBOARD_FAILED",
+                    captureResult.ErrorMessage ?? "Clipboard copy did not produce updated text.",
+                    captureResult.Diagnostics);
         }
 
-        return Task.FromResult(_automationFacade.CaptureSelectionContext());
+        if (!string.Equals(method, "uia", StringComparison.OrdinalIgnoreCase))
+        {
+            return SelectionContextCaptureResult.Failure(
+                method,
+                "TEXT_CAPTURE_UNSUPPORTED",
+                $"Unsupported selection-context capture method '{method}'.",
+                new JsonObject());
+        }
+
+        return await Task.FromResult(_automationFacade.CaptureSelectionContext());
     }
 }
 
