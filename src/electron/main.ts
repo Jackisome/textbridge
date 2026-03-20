@@ -5,6 +5,7 @@ import { registerContextPromptIpc } from './ipc/register-context-prompt-ipc';
 import { registerSettingsIpc } from './ipc/register-settings-ipc';
 import { createDefaultProviderRegistry } from './services/providers/provider-registry';
 import { createContextPromptSessionService } from './services/context-prompt-session-service';
+import { createContextPromptRequestService } from './services/context-prompt-request-service';
 import { createContextPromptWindowService } from './services/context-prompt-window-service';
 import { createWin32Adapter } from './platform/win32/adapter';
 import { createWin32HelperSessionService } from './platform/win32/helper-session-service';
@@ -95,6 +96,10 @@ void app.whenReady().then(async () => {
     rendererProdHtml,
     preloadPath: path.join(__dirname, 'preload.js')
   });
+  const contextPromptRequestService = createContextPromptRequestService({
+    promptSessionService: contextPromptSessionService,
+    promptWindowService: contextPromptWindowService
+  });
 
   helperSessionService = createWin32HelperSessionService({
     isPackaged: app.isPackaged,
@@ -111,12 +116,8 @@ void app.whenReady().then(async () => {
     registry: createDefaultProviderRegistry()
   });
   const popupService = createPopupService({
-    async requestContextInstructions() {
-      await diagnosticLogService?.warn(
-        'Context instructions UI is not implemented yet; proceeding without extra instructions.'
-      );
-      return '';
-    },
+    requestContextInstructions: (sourceText) =>
+      contextPromptRequestService.requestContextInstructions(sourceText),
     async showFallbackResult() {
       await windowService.showMainWindow();
     },
