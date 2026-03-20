@@ -366,10 +366,10 @@ public sealed class AutomationFacade :
             foregroundWindow);
         var restoreTargetToken = CreateRestoreTargetToken(foregroundWindow);
         var capabilities = new SelectionContextCapabilitiesSnapshot(
+            // Current real path only treats control-level proximity as near-selection-enough.
             CanPositionPromptNearSelection:
                 string.Equals(anchor.Kind, "selection-rect", StringComparison.Ordinal) ||
-                string.Equals(anchor.Kind, "control-rect", StringComparison.Ordinal) ||
-                string.Equals(anchor.Kind, "window-rect", StringComparison.Ordinal),
+                string.Equals(anchor.Kind, "control-rect", StringComparison.Ordinal),
             CanRestoreTargetAfterPrompt: !string.IsNullOrWhiteSpace(restoreTargetToken),
             CanAutoWriteBackAfterPrompt: false);
 

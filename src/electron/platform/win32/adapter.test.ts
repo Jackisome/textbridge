@@ -55,7 +55,7 @@ describe('createWin32Adapter', () => {
     });
   });
 
-  it('maps helper selection-context responses into platform-neutral contracts', async () => {
+  it('maps current helper selection-context responses into platform-neutral contracts', async () => {
     const session = {
       send: vi.fn().mockResolvedValue({
         id: 'req-2b',
@@ -65,7 +65,7 @@ describe('createWin32Adapter', () => {
           method: 'uia',
           text: 'world',
           anchor: {
-            kind: 'selection-rect',
+            kind: 'control-rect',
             bounds: {
               x: 10,
               y: 10,
@@ -80,7 +80,7 @@ describe('createWin32Adapter', () => {
           capabilities: {
             canPositionPromptNearSelection: true,
             canRestoreTargetAfterPrompt: true,
-            canAutoWriteBackAfterPrompt: true
+            canAutoWriteBackAfterPrompt: false
           }
         },
         error: null
@@ -96,7 +96,7 @@ describe('createWin32Adapter', () => {
         sourceText: 'world',
         captureMethod: 'uia',
         anchor: {
-          kind: 'selection-rect',
+          kind: 'control-rect',
           bounds: {
             x: 10,
             y: 10,
@@ -112,7 +112,7 @@ describe('createWin32Adapter', () => {
         capabilities: {
           canPositionPromptNearSelection: true,
           canRestoreTargetAfterPrompt: true,
-          canAutoWriteBackAfterPrompt: true
+          canAutoWriteBackAfterPrompt: false
         }
       }
     });
@@ -163,7 +163,7 @@ describe('createWin32Adapter', () => {
     });
   });
 
-  it('preserves degraded anchor kinds such as control-rect and window-rect', async () => {
+  it('keeps window-rect truthful and not near-selection-capable', async () => {
     const session = {
       send: vi
         .fn()
@@ -208,7 +208,7 @@ describe('createWin32Adapter', () => {
               }
             },
             capabilities: {
-              canPositionPromptNearSelection: true,
+              canPositionPromptNearSelection: false,
               canRestoreTargetAfterPrompt: false,
               canAutoWriteBackAfterPrompt: false
             }
@@ -238,6 +238,7 @@ describe('createWin32Adapter', () => {
           kind: 'window-rect'
         },
         capabilities: {
+          canPositionPromptNearSelection: false,
           canRestoreTargetAfterPrompt: false,
           canAutoWriteBackAfterPrompt: false
         }

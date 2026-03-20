@@ -282,7 +282,7 @@ describe('createWin32HelperSessionService', () => {
     });
   });
 
-  it('logs selection-context and restore-target diagnostics with anchor and restore details', async () => {
+  it('logs current selection-context and restore-target diagnostics with truthful anchor details', async () => {
     const fakeProcess = createFakeSpawnedProcess();
     const logger = {
       debug: vi.fn().mockResolvedValue(undefined),
@@ -323,7 +323,7 @@ describe('createWin32HelperSessionService', () => {
         method: 'uia',
         text: 'world',
         anchor: {
-          kind: 'selection-rect',
+          kind: 'control-rect',
           bounds: {
             x: 10,
             y: 10,
@@ -337,7 +337,7 @@ describe('createWin32HelperSessionService', () => {
         capabilities: {
           canPositionPromptNearSelection: true,
           canRestoreTargetAfterPrompt: true,
-          canAutoWriteBackAfterPrompt: true
+          canAutoWriteBackAfterPrompt: false
         },
         diagnostics: {
           processName: 'notepad',
@@ -352,7 +352,7 @@ describe('createWin32HelperSessionService', () => {
       ok: true
     });
     expect(logger.debug).toHaveBeenCalledWith(
-      'win32-helper capture-selection-context succeeded; request method=uia; response method=uia textLength=5 anchorKind=selection-rect anchorBounds=10,10,40,20 restoreToken=hwnd:123 canPositionPromptNearSelection=true canRestoreTargetAfterPrompt=true canAutoWriteBackAfterPrompt=true processName=notepad windowClassName=Edit'
+      'win32-helper capture-selection-context succeeded; request method=uia; response method=uia textLength=5 anchorKind=control-rect anchorBounds=10,10,40,20 restoreToken=hwnd:123 canPositionPromptNearSelection=true canRestoreTargetAfterPrompt=true canAutoWriteBackAfterPrompt=false processName=notepad windowClassName=Edit'
     );
 
     const restorePromise = session.send('restore-target', {
