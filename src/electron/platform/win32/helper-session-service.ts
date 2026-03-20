@@ -418,6 +418,16 @@ function summarizeHelperRequest(
     return typeof textLength === 'number' ? `request textLength=${textLength}` : '';
   }
 
+  if (kind === 'capture-selection-context') {
+    const method = getString(payload, 'method');
+    return method ? `request method=${method}` : '';
+  }
+
+  if (kind === 'restore-target') {
+    const token = getString(payload, 'token');
+    return token ? `request token=${token}` : '';
+  }
+
   return '';
 }
 
@@ -473,6 +483,40 @@ function summarizeHelperResponse(
     return parts.join(' ');
   }
 
+  if (kind === 'capture-selection-context') {
+    const anchor = getRecord(payload, 'anchor');
+    const anchorBounds = getRecord(anchor ?? {}, 'bounds');
+    const restoreTarget = getRecord(payload, 'restoreTarget');
+    const capabilities = getRecord(payload, 'capabilities');
+    const parts = [
+      formatSummaryPart('response method', getString(payload, 'method')),
+      formatSummaryPart('textLength', getString(payload, 'text')?.length),
+      formatSummaryPart('anchorKind', getString(anchor, 'kind')),
+      formatAnchorBounds(anchorBounds),
+      formatSummaryPart('displayId', getString(anchor, 'displayId')),
+      formatSummaryPart('restoreToken', getString(restoreTarget, 'token')),
+      formatSummaryPart(
+        'canPositionPromptNearSelection',
+        getBoolean(capabilities, 'canPositionPromptNearSelection')
+      ),
+      formatSummaryPart(
+        'canRestoreTargetAfterPrompt',
+        getBoolean(capabilities, 'canRestoreTargetAfterPrompt')
+      ),
+      formatSummaryPart(
+        'canAutoWriteBackAfterPrompt',
+        getBoolean(capabilities, 'canAutoWriteBackAfterPrompt')
+      ),
+      formatSummaryPart('processName', getString(diagnostics, 'processName')),
+      formatSummaryPart('windowClassName', getString(diagnostics, 'windowClassName')),
+      formatSummaryPart('windowTitle', summarizeText(getString(diagnostics, 'windowTitle'))),
+      formatSummaryPart('controlType', getString(diagnostics, 'controlType')),
+      formatSummaryPart('framework', getString(diagnostics, 'framework'))
+    ].filter(Boolean);
+
+    return parts.join(' ');
+  }
+
   if (kind === 'write-text' || kind === 'clipboard-write') {
     const parts = [
       formatSummaryPart('response method', getString(payload, 'method')),
@@ -513,7 +557,41 @@ function summarizeHelperResponse(
     return parts.join(' ');
   }
 
+  if (kind === 'restore-target') {
+    const parts = [
+      formatSummaryPart('restored', getBoolean(payload, 'restored')),
+      formatSummaryPart('requestedToken', getString(diagnostics, 'requestedToken')),
+      formatSummaryPart('windowHandle', getNumber(diagnostics, 'windowHandle')),
+      formatSummaryPart(
+        'foregroundRestored',
+        getBoolean(diagnostics, 'foregroundRestored')
+      ),
+      formatSummaryPart('processName', getString(diagnostics, 'processName')),
+      formatSummaryPart('windowClassName', getString(diagnostics, 'windowClassName')),
+      formatSummaryPart('windowTitle', summarizeText(getString(diagnostics, 'windowTitle')))
+    ].filter(Boolean);
+
+    return parts.join(' ');
+  }
+
   return '';
+}
+
+function formatAnchorBounds(
+  record: Record<string, unknown> | undefined
+): string {
+  if (!record) {
+    return '';
+  }
+
+  const x = getNumber(record, 'x');
+  const y = getNumber(record, 'y');
+  const width = getNumber(record, 'width');
+  const height = getNumber(record, 'height');
+
+  return [x, y, width, height].every((value) => typeof value === 'number')
+    ? `anchorBounds=${x},${y},${width},${height}`
+    : '';
 }
 
 function formatSummaryPart(

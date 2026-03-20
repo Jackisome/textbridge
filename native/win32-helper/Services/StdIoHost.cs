@@ -19,6 +19,8 @@ public sealed class StdIoHost
     private readonly HealthCheckService _healthCheckService;
     private readonly CaptureTextService _captureTextService;
     private readonly WriteTextService _writeTextService;
+    private readonly CaptureSelectionContextService? _captureSelectionContextService;
+    private readonly RestoreTargetService? _restoreTargetService;
 
     public StdIoHost(
         TextReader input,
@@ -26,7 +28,9 @@ public sealed class StdIoHost
         Logger logger,
         HealthCheckService healthCheckService,
         CaptureTextService captureTextService,
-        WriteTextService writeTextService)
+        WriteTextService writeTextService,
+        CaptureSelectionContextService? captureSelectionContextService = null,
+        RestoreTargetService? restoreTargetService = null)
     {
         _input = input;
         _output = output;
@@ -34,6 +38,8 @@ public sealed class StdIoHost
         _healthCheckService = healthCheckService;
         _captureTextService = captureTextService;
         _writeTextService = writeTextService;
+        _captureSelectionContextService = captureSelectionContextService;
+        _restoreTargetService = restoreTargetService;
     }
 
     public async Task RunAsync(CancellationToken cancellationToken = default)
@@ -223,6 +229,78 @@ public sealed class StdIoHost
                     payload);
         }
 
+        if (string.Equals(request.Kind, "capture-selection-context", StringComparison.OrdinalIgnoreCase))
+        {
+            var captureRequest = TryDeserializePayload<CaptureSelectionContextRequest>(request.Payload);
+            if (captureRequest is null || string.IsNullOrWhiteSpace(captureRequest.Method))
+            {
+                return HelperResponse.Failure(
+                    request.Id,
+                    request.Kind,
+                    "INVALID_CAPTURE_METHOD",
+                    "capture-selection-context requests must include a method.");
+            }
+
+            if (_captureSelectionContextService is null)
+            {
+                return HelperResponse.Failure(
+                    request.Id,
+                    request.Kind,
+                    "TEXT_CAPTURE_UNSUPPORTED",
+                    "Selection-context capture is unavailable.");
+            }
+
+            var result = await _captureSelectionContextService.CaptureAsync(
+                captureRequest.Method,
+                cancellationToken);
+            var payload = result.ToPayload();
+
+            return result.Ok
+                ? HelperResponse.Success(request.Id, request.Kind, payload)
+                : HelperResponse.Failure(
+                    request.Id,
+                    request.Kind,
+                    result.ErrorCode ?? "TEXT_CAPTURE_UNSUPPORTED",
+                    result.ErrorMessage ?? "Failed to capture selection context.",
+                    payload);
+        }
+
+        if (string.Equals(request.Kind, "restore-target", StringComparison.OrdinalIgnoreCase))
+        {
+            var restoreRequest = TryDeserializePayload<RestoreTargetRequest>(request.Payload);
+            if (restoreRequest is null || string.IsNullOrWhiteSpace(restoreRequest.Token))
+            {
+                return HelperResponse.Failure(
+                    request.Id,
+                    request.Kind,
+                    "INVALID_RESTORE_TARGET",
+                    "restore-target requests must include a token.");
+            }
+
+            if (_restoreTargetService is null)
+            {
+                return HelperResponse.Failure(
+                    request.Id,
+                    request.Kind,
+                    "RESTORE_TARGET_UNSUPPORTED",
+                    "Restore-target requests are unavailable.");
+            }
+
+            var result = await _restoreTargetService.RestoreAsync(
+                restoreRequest.Token,
+                cancellationToken);
+            var payload = result.ToPayload();
+
+            return result.Ok
+                ? HelperResponse.Success(request.Id, request.Kind, payload)
+                : HelperResponse.Failure(
+                    request.Id,
+                    request.Kind,
+                    result.ErrorCode ?? "RESTORE_TARGET_FAILED",
+                    result.ErrorMessage ?? "Failed to restore the target window.",
+                    payload);
+        }
+
         return HelperResponse.Failure(
             request.Id,
             request.Kind,
@@ -257,5 +335,18 @@ public sealed class StdIoHost
         }
 
         return textProperty.GetString();
+    }
+
+    private static TPayload? TryDeserializePayload<TPayload>(JsonElement? payload)
+        where TPayload : class
+    {
+        if (payload is not { ValueKind: JsonValueKind.Object } payloadObject)
+        {
+            return null;
+        }
+
+        return JsonSerializer.Deserialize<TPayload>(
+            payloadObject.GetRawText(),
+            JsonOptions);
     }
 }

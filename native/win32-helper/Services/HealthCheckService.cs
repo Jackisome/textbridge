@@ -9,7 +9,9 @@ public sealed class HealthCheckService
         "health-check",
         "capture-text",
         "write-text",
-        "clipboard-write"
+        "clipboard-write",
+        "capture-selection-context",
+        "restore-target"
     ];
 
     private static readonly string Version =

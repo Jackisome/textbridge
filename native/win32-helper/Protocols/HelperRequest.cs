@@ -12,3 +12,9 @@ public sealed class HelperRequest
 
     public JsonElement? Payload { get; init; }
 }
+
+public sealed record CaptureSelectionContextRequest(
+    string Method);
+
+public sealed record RestoreTargetRequest(
+    string Token);

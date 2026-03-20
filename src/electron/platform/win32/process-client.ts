@@ -21,25 +21,51 @@ export function createWin32ProcessClient({
         return transport.send(request);
       }
 
-      return request.kind === 'capture-text'
-        ? {
-            kind: 'capture-text',
-            ok: false,
-            method: request.method,
-            error: {
-              code: 'WIN32_HELPER_UNAVAILABLE',
-              message: 'The Windows helper process is not connected.'
-            }
+      if (request.kind === 'capture-text') {
+        return {
+          kind: 'capture-text',
+          ok: false,
+          method: request.method,
+          error: {
+            code: 'WIN32_HELPER_UNAVAILABLE',
+            message: 'The Windows helper process is not connected.'
           }
-        : {
-            kind: 'write-text',
-            ok: false,
-            method: request.method,
-            error: {
-              code: 'WIN32_HELPER_UNAVAILABLE',
-              message: 'The Windows helper process is not connected.'
-            }
-          };
+        };
+      }
+
+      if (request.kind === 'capture-selection-context') {
+        return {
+          kind: 'capture-selection-context',
+          ok: false,
+          method: request.method,
+          error: {
+            code: 'WIN32_HELPER_UNAVAILABLE',
+            message: 'The Windows helper process is not connected.'
+          }
+        };
+      }
+
+      if (request.kind === 'restore-target') {
+        return {
+          kind: 'restore-target',
+          ok: false,
+          restored: false,
+          error: {
+            code: 'WIN32_HELPER_UNAVAILABLE',
+            message: 'The Windows helper process is not connected.'
+          }
+        };
+      }
+
+      return {
+        kind: 'write-text',
+        ok: false,
+        method: request.method,
+        error: {
+          code: 'WIN32_HELPER_UNAVAILABLE',
+          message: 'The Windows helper process is not connected.'
+        }
+      };
     }
   };
 }

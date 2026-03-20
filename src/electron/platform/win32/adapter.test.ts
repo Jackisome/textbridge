@@ -55,6 +55,102 @@ describe('createWin32Adapter', () => {
     });
   });
 
+  it('maps helper selection-context responses into platform-neutral contracts', async () => {
+    const session = {
+      send: vi.fn().mockResolvedValue({
+        id: 'req-2b',
+        kind: 'capture-selection-context',
+        ok: true,
+        payload: {
+          method: 'uia',
+          text: 'world',
+          anchor: {
+            kind: 'selection-rect',
+            bounds: {
+              x: 10,
+              y: 10,
+              width: 40,
+              height: 20
+            },
+            displayId: 'display-1'
+          },
+          restoreTarget: {
+            token: 'hwnd:123'
+          },
+          capabilities: {
+            canPositionPromptNearSelection: true,
+            canRestoreTargetAfterPrompt: true,
+            canAutoWriteBackAfterPrompt: true
+          }
+        },
+        error: null
+      })
+    };
+    const adapter = createWin32Adapter({
+      helperSession: session
+    });
+
+    await expect(adapter.captureSelectionContext?.('uia')).resolves.toEqual({
+      success: true,
+      data: {
+        sourceText: 'world',
+        captureMethod: 'uia',
+        anchor: {
+          kind: 'selection-rect',
+          bounds: {
+            x: 10,
+            y: 10,
+            width: 40,
+            height: 20
+          },
+          displayId: 'display-1'
+        },
+        restoreTarget: {
+          platform: 'win32',
+          token: 'hwnd:123'
+        },
+        capabilities: {
+          canPositionPromptNearSelection: true,
+          canRestoreTargetAfterPrompt: true,
+          canAutoWriteBackAfterPrompt: true
+        }
+      }
+    });
+    expect(session.send).toHaveBeenCalledWith('capture-selection-context', {
+      method: 'uia'
+    });
+  });
+
+  it('maps helper restore-target responses into restore results', async () => {
+    const session = {
+      send: vi.fn().mockResolvedValue({
+        id: 'req-2c',
+        kind: 'restore-target',
+        ok: true,
+        payload: {
+          restored: true
+        },
+        error: null
+      })
+    };
+    const adapter = createWin32Adapter({
+      helperSession: session
+    });
+
+    await expect(
+      adapter.restoreSelectionTarget?.({
+        platform: 'win32',
+        token: 'hwnd:123'
+      })
+    ).resolves.toEqual({
+      success: true,
+      restored: true
+    });
+    expect(session.send).toHaveBeenCalledWith('restore-target', {
+      token: 'hwnd:123'
+    });
+  });
+
   it('maps helper write responses into WriteBackResult', async () => {
     const session = {
       send: vi.fn().mockResolvedValue({

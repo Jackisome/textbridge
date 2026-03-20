@@ -11,7 +11,12 @@ import {
   type CreateWin32ProcessClientOptions,
   type Win32ProcessClient
 } from './process-client';
-import type { Win32CaptureMethod, Win32WriteMethod } from './protocol';
+import type {
+  Win32CaptureMethod,
+  Win32PromptAnchor,
+  Win32SelectionContextCapabilities,
+  Win32WriteMethod
+} from './protocol';
 
 export interface Win32Adapter {
   captureText(method: Win32CaptureMethod): Promise<TextCaptureResult>;
@@ -90,6 +95,128 @@ export function createWin32Adapter({
         : {
             success: false,
             method: response.method,
+            errorCode: response.error?.code,
+            errorMessage: response.error?.message
+          };
+    },
+
+    async captureSelectionContext(
+      method: Win32CaptureMethod
+    ): Promise<{
+      success: boolean;
+      data?: SelectionContextCapture;
+      errorCode?: string;
+      errorMessage?: string;
+    }> {
+      if (helperSession) {
+        const response = await helperSession.send('capture-selection-context', {
+          method
+        });
+
+        if (response.kind !== 'capture-selection-context') {
+          throw new Error(
+            'Received an unexpected helper response kind for capture-selection-context.'
+          );
+        }
+
+        return mapSelectionContextResponse(response, method);
+      }
+
+      if (!processClient) {
+        throw new Error(
+          'Win32 adapter is missing both helperSession and processClient.'
+        );
+      }
+
+      const response = await processClient.send({
+        kind: 'capture-selection-context',
+        method
+      });
+
+      if (response.kind !== 'capture-selection-context') {
+        throw new Error(
+          'Received an unexpected response kind for capture-selection-context.'
+        );
+      }
+
+      return response.ok
+        ? {
+            success: true,
+            data: {
+              sourceText: response.text ?? '',
+              captureMethod: response.method,
+              anchor: mapPromptAnchor(response.anchor),
+              restoreTarget: response.restoreTarget
+                ? {
+                    platform: 'win32',
+                    token: response.restoreTarget.token
+                  }
+                : null,
+              capabilities: mapSelectionContextCapabilities(response.capabilities)
+            }
+          }
+        : {
+            success: false,
+            errorCode: response.error?.code,
+            errorMessage: response.error?.message
+          };
+    },
+
+    async restoreSelectionTarget(
+      target: RestoreTarget
+    ): Promise<{
+      success: boolean;
+      restored: boolean;
+      errorCode?: string;
+      errorMessage?: string;
+    }> {
+      if (target.platform !== 'win32') {
+        return {
+          success: false,
+          restored: false,
+          errorCode: 'RESTORE_TARGET_PLATFORM_UNSUPPORTED',
+          errorMessage:
+            'The win32 adapter can only restore targets that were captured on win32.'
+        };
+      }
+
+      if (helperSession) {
+        const response = await helperSession.send('restore-target', {
+          token: target.token
+        });
+
+        if (response.kind !== 'restore-target') {
+          throw new Error(
+            'Received an unexpected helper response kind for restore-target.'
+          );
+        }
+
+        return mapRestoreTargetResponse(response);
+      }
+
+      if (!processClient) {
+        throw new Error(
+          'Win32 adapter is missing both helperSession and processClient.'
+        );
+      }
+
+      const response = await processClient.send({
+        kind: 'restore-target',
+        token: target.token
+      });
+
+      if (response.kind !== 'restore-target') {
+        throw new Error('Received an unexpected response kind for restore-target.');
+      }
+
+      return response.ok
+        ? {
+            success: true,
+            restored: response.restored
+          }
+        : {
+            success: false,
+            restored: response.restored,
             errorCode: response.error?.code,
             errorMessage: response.error?.message
           };
@@ -218,6 +345,60 @@ function mapWriteResponse(
       };
 }
 
+function mapSelectionContextResponse(
+  response: HelperResponse,
+  fallbackMethod: Win32CaptureMethod
+): {
+  success: boolean;
+  data?: SelectionContextCapture;
+  errorCode?: string;
+  errorMessage?: string;
+} {
+  const payload = asPayload(response.payload);
+  const method = toCaptureMethod(payload.method, fallbackMethod);
+
+  return response.ok
+    ? {
+        success: true,
+        data: {
+          sourceText: getString(payload, 'text') ?? '',
+          captureMethod: method,
+          anchor: mapPromptAnchor(getRecord(payload, 'anchor')),
+          restoreTarget: mapRestoreTarget(getRecord(payload, 'restoreTarget')),
+          capabilities: mapSelectionContextCapabilities(
+            getRecord(payload, 'capabilities')
+          )
+        }
+      }
+    : {
+        success: false,
+        errorCode: response.error?.code,
+        errorMessage: response.error?.message
+      };
+}
+
+function mapRestoreTargetResponse(response: HelperResponse): {
+  success: boolean;
+  restored: boolean;
+  errorCode?: string;
+  errorMessage?: string;
+} {
+  const payload = asPayload(response.payload);
+  const restored = getBoolean(payload, 'restored') ?? false;
+
+  return response.ok
+    ? {
+        success: true,
+        restored
+      }
+    : {
+        success: false,
+        restored,
+        errorCode: response.error?.code,
+        errorMessage: response.error?.message
+      };
+}
+
 function asPayload(payload: unknown): Record<string, unknown> {
   return typeof payload === 'object' && payload !== null && !Array.isArray(payload)
     ? (payload as Record<string, unknown>)
@@ -238,4 +419,131 @@ function toWriteMethod(
   return value === 'replace-selection' || value === 'paste-translation'
     ? value
     : fallbackMethod;
+}
+
+function mapPromptAnchor(payload: unknown): SelectionContextCapture['anchor'] {
+  if (!isRecord(payload)) {
+    return {
+      kind: 'unknown'
+    };
+  }
+
+  const kind = toPromptAnchorKind(payload.kind);
+  const boundsRecord = getRecord(payload, 'bounds');
+
+  return {
+    kind,
+    ...(boundsRecord && isPromptAnchorBounds(boundsRecord)
+      ? {
+          bounds: {
+            x: boundsRecord.x,
+            y: boundsRecord.y,
+            width: boundsRecord.width,
+            height: boundsRecord.height
+          }
+        }
+      : {}),
+    ...(getString(payload, 'displayId')
+      ? { displayId: getString(payload, 'displayId') }
+      : {})
+  };
+}
+
+function mapRestoreTarget(
+  payload: Record<string, unknown> | undefined
+): RestoreTarget | null {
+  const token = getString(payload, 'token');
+
+  return token
+    ? {
+        platform: 'win32',
+        token
+      }
+    : null;
+}
+
+function mapSelectionContextCapabilities(
+  payload: Win32SelectionContextCapabilities | Record<string, unknown> | undefined
+): SelectionContextCapture['capabilities'] {
+  if (!payload || !isRecord(payload)) {
+    return {
+      canPositionPromptNearSelection: false,
+      canRestoreTargetAfterPrompt: false,
+      canAutoWriteBackAfterPrompt: false
+    };
+  }
+
+  return {
+    canPositionPromptNearSelection:
+      getBoolean(payload, 'canPositionPromptNearSelection') ?? false,
+    canRestoreTargetAfterPrompt:
+      getBoolean(payload, 'canRestoreTargetAfterPrompt') ?? false,
+    canAutoWriteBackAfterPrompt:
+      getBoolean(payload, 'canAutoWriteBackAfterPrompt') ?? false
+  };
+}
+
+function toPromptAnchorKind(value: unknown): Win32PromptAnchor['kind'] {
+  return value === 'selection-rect' ||
+    value === 'control-rect' ||
+    value === 'window-rect' ||
+    value === 'cursor' ||
+    value === 'unknown'
+    ? value
+    : 'unknown';
+}
+
+function isPromptAnchorBounds(
+  value: Record<string, unknown>
+): value is {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+} {
+  return (
+    typeof value.x === 'number' &&
+    typeof value.y === 'number' &&
+    typeof value.width === 'number' &&
+    typeof value.height === 'number'
+  );
+}
+
+function getString(
+  record: Record<string, unknown> | undefined,
+  key: string
+): string | undefined {
+  if (!record) {
+    return undefined;
+  }
+
+  const value = record[key];
+  return typeof value === 'string' ? value : undefined;
+}
+
+function getBoolean(
+  record: Record<string, unknown> | undefined,
+  key: string
+): boolean | undefined {
+  if (!record) {
+    return undefined;
+  }
+
+  const value = record[key];
+  return typeof value === 'boolean' ? value : undefined;
+}
+
+function getRecord(
+  record: Record<string, unknown> | undefined,
+  key: string
+): Record<string, unknown> | undefined {
+  if (!record) {
+    return undefined;
+  }
+
+  return isRecord(record[key]) ? (record[key] as Record<string, unknown>) : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

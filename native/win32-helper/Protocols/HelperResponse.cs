@@ -53,3 +53,22 @@ public sealed class HelperError
 
     public string Message { get; init; } = string.Empty;
 }
+
+public sealed record HelperAnchorBoundsPayload(
+    int X,
+    int Y,
+    int Width,
+    int Height);
+
+public sealed record HelperAnchorPayload(
+    string Kind,
+    HelperAnchorBoundsPayload? Bounds = null,
+    string? DisplayId = null);
+
+public sealed record HelperRestoreTargetPayload(
+    string Token);
+
+public sealed record HelperSelectionContextCapabilitiesPayload(
+    bool CanPositionPromptNearSelection,
+    bool CanRestoreTargetAfterPrompt,
+    bool CanAutoWriteBackAfterPrompt);

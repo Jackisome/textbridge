@@ -13,6 +13,11 @@ public interface IAutomationFacade
     CaptureTextResult CaptureSelection();
 }
 
+public interface ISelectionContextAutomationFacade
+{
+    SelectionContextCaptureResult CaptureSelectionContext();
+}
+
 public interface IFocusedElementInspectionService
 {
     FocusedElementSnapshot InspectFocusedElement();
@@ -21,6 +26,92 @@ public interface IFocusedElementInspectionService
 public interface IFocusedElementValueWriter
 {
     void SetFocusedValue(string value, string? expectedRuntimeId = null);
+}
+
+public interface IRestoreTargetAutomationFacade
+{
+    RestoreTargetResult RestoreTarget(string token);
+}
+
+public sealed record PromptAnchorBoundsSnapshot(
+    int X,
+    int Y,
+    int Width,
+    int Height);
+
+public sealed record PromptAnchorSnapshot(
+    string Kind,
+    int? X = null,
+    int? Y = null,
+    int? Width = null,
+    int? Height = null,
+    string? DisplayId = null)
+{
+    public PromptAnchorBoundsSnapshot? Bounds =>
+        X.HasValue &&
+        Y.HasValue &&
+        Width.HasValue &&
+        Height.HasValue
+            ? new PromptAnchorBoundsSnapshot(
+                X.Value,
+                Y.Value,
+                Width.Value,
+                Height.Value)
+            : null;
+
+    public JsonObject ToPayload()
+    {
+        var payload = new JsonObject
+        {
+            ["kind"] = Kind
+        };
+
+        if (Bounds is not null)
+        {
+            payload["bounds"] = new JsonObject
+            {
+                ["x"] = Bounds.X,
+                ["y"] = Bounds.Y,
+                ["width"] = Bounds.Width,
+                ["height"] = Bounds.Height
+            };
+        }
+
+        if (!string.IsNullOrWhiteSpace(DisplayId))
+        {
+            payload["displayId"] = DisplayId;
+        }
+
+        return payload;
+    }
+}
+
+public sealed record SelectionContextCapabilitiesSnapshot(
+    bool CanPositionPromptNearSelection,
+    bool CanRestoreTargetAfterPrompt,
+    bool CanAutoWriteBackAfterPrompt)
+{
+    public static SelectionContextCapabilitiesSnapshot Full =>
+        new(
+            CanPositionPromptNearSelection: true,
+            CanRestoreTargetAfterPrompt: true,
+            CanAutoWriteBackAfterPrompt: true);
+
+    public static SelectionContextCapabilitiesSnapshot None =>
+        new(
+            CanPositionPromptNearSelection: false,
+            CanRestoreTargetAfterPrompt: false,
+            CanAutoWriteBackAfterPrompt: false);
+
+    public JsonObject ToPayload()
+    {
+        return new JsonObject
+        {
+            ["canPositionPromptNearSelection"] = CanPositionPromptNearSelection,
+            ["canRestoreTargetAfterPrompt"] = CanRestoreTargetAfterPrompt,
+            ["canAutoWriteBackAfterPrompt"] = CanAutoWriteBackAfterPrompt
+        };
+    }
 }
 
 public sealed record FocusedElementSnapshot(
@@ -35,8 +126,10 @@ public sealed record FocusedElementSnapshot(
 
 public sealed class AutomationFacade :
     IAutomationFacade,
+    ISelectionContextAutomationFacade,
     IFocusedElementInspectionService,
-    IFocusedElementValueWriter
+    IFocusedElementValueWriter,
+    IRestoreTargetAutomationFacade
 {
     private const uint EmGetSel = 0x00B0;
     private const uint WmGetText = 0x000D;
@@ -250,6 +343,115 @@ public sealed class AutomationFacade :
             SelectionPrefixText: selectionPrefixText,
             SelectionSuffixText: selectionSuffixText,
             Diagnostics: diagnostics);
+    }
+
+    public SelectionContextCaptureResult CaptureSelectionContext()
+    {
+        var captureResult = CaptureSelection();
+        var diagnostics = captureResult.Diagnostics.DeepClone() as JsonObject ?? new JsonObject();
+
+        if (!captureResult.Ok)
+        {
+            return SelectionContextCaptureResult.Failure(
+                captureResult.Method,
+                captureResult.ErrorCode ?? "TEXT_CAPTURE_UNSUPPORTED",
+                captureResult.ErrorMessage ?? "Failed to capture the current selection.",
+                diagnostics);
+        }
+
+        var foregroundWindow = GetForegroundWindow();
+        var focusedElement = AutomationElement.FocusedElement;
+        var anchor = CreatePromptAnchorSnapshot(
+            focusedElement,
+            foregroundWindow);
+        var restoreTargetToken = CreateRestoreTargetToken(foregroundWindow);
+        var capabilities = new SelectionContextCapabilitiesSnapshot(
+            CanPositionPromptNearSelection: !string.Equals(anchor.Kind, "unknown", StringComparison.Ordinal),
+            CanRestoreTargetAfterPrompt: !string.IsNullOrWhiteSpace(restoreTargetToken),
+            CanAutoWriteBackAfterPrompt: !string.IsNullOrWhiteSpace(restoreTargetToken));
+
+        diagnostics["anchorKind"] = anchor.Kind;
+        if (anchor.Bounds is not null)
+        {
+            diagnostics["anchorBounds"] = new JsonObject
+            {
+                ["x"] = anchor.Bounds.X,
+                ["y"] = anchor.Bounds.Y,
+                ["width"] = anchor.Bounds.Width,
+                ["height"] = anchor.Bounds.Height
+            };
+        }
+
+        if (!string.IsNullOrWhiteSpace(restoreTargetToken))
+        {
+            diagnostics["restoreTargetToken"] = restoreTargetToken;
+        }
+
+        return SelectionContextCaptureResult.Success(
+            captureResult.Method,
+            captureResult.Text ?? string.Empty,
+            anchor,
+            restoreTargetToken,
+            capabilities,
+            diagnostics);
+    }
+
+    public RestoreTargetResult RestoreTarget(string token)
+    {
+        var diagnostics = new JsonObject
+        {
+            ["requestedToken"] = token
+        };
+
+        if (!TryParseWindowHandleToken(token, out var windowHandle))
+        {
+            return RestoreTargetResult.Failure(
+                restored: false,
+                errorCode: "INVALID_RESTORE_TARGET",
+                errorMessage: "The restore target token is invalid.",
+                diagnostics: diagnostics);
+        }
+
+        diagnostics["windowHandle"] = windowHandle.ToInt64();
+        diagnostics["windowTitle"] = ReadWindowText(windowHandle);
+        diagnostics["windowClassName"] = ReadWindowClassName(windowHandle);
+
+        var processName = TryReadProcessName(windowHandle);
+        if (!string.IsNullOrWhiteSpace(processName))
+        {
+            diagnostics["processName"] = processName;
+        }
+
+        if (!IsWindow(windowHandle))
+        {
+            diagnostics["foregroundRestored"] = false;
+            return RestoreTargetResult.Failure(
+                restored: false,
+                errorCode: "RESTORE_TARGET_FAILED",
+                errorMessage: "The target window handle is no longer valid.",
+                diagnostics: diagnostics);
+        }
+
+        if (IsIconic(windowHandle))
+        {
+            _ = ShowWindow(windowHandle, SwRestore);
+        }
+
+        var restored =
+            GetForegroundWindow() == windowHandle ||
+            SetForegroundWindow(windowHandle);
+
+        diagnostics["foregroundRestored"] = restored;
+
+        return restored
+            ? RestoreTargetResult.Success(
+                restored: true,
+                diagnostics: diagnostics)
+            : RestoreTargetResult.Failure(
+                restored: false,
+                errorCode: "RESTORE_TARGET_FAILED",
+                errorMessage: "Failed to restore the target window to the foreground.",
+                diagnostics: diagnostics);
     }
 
     public void SetFocusedValue(string value, string? expectedRuntimeId = null)
@@ -654,8 +856,139 @@ public sealed class AutomationFacade :
             : GetWindowLong(windowHandle, GwlStyle);
     }
 
+    private static PromptAnchorSnapshot CreatePromptAnchorSnapshot(
+        AutomationElement? focusedElement,
+        IntPtr foregroundWindow)
+    {
+        if (focusedElement is not null &&
+            TryGetElementBounds(focusedElement, out var elementBounds))
+        {
+            return new PromptAnchorSnapshot(
+                "selection-rect",
+                elementBounds.X,
+                elementBounds.Y,
+                elementBounds.Width,
+                elementBounds.Height);
+        }
+
+        if (TryGetWindowBounds(foregroundWindow, out var windowBounds))
+        {
+            return new PromptAnchorSnapshot(
+                "window-rect",
+                windowBounds.X,
+                windowBounds.Y,
+                windowBounds.Width,
+                windowBounds.Height);
+        }
+
+        return new PromptAnchorSnapshot("unknown");
+    }
+
+    private static bool TryGetElementBounds(
+        AutomationElement element,
+        out PromptAnchorBoundsSnapshot bounds)
+    {
+        bounds = null!;
+
+        try
+        {
+            var rectangle = element.Current.BoundingRectangle;
+            if (rectangle.IsEmpty ||
+                rectangle.Width <= 0 ||
+                rectangle.Height <= 0)
+            {
+                return false;
+            }
+
+            bounds = new PromptAnchorBoundsSnapshot(
+                (int)Math.Round(rectangle.X),
+                (int)Math.Round(rectangle.Y),
+                (int)Math.Round(rectangle.Width),
+                (int)Math.Round(rectangle.Height));
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool TryGetWindowBounds(
+        IntPtr windowHandle,
+        out PromptAnchorBoundsSnapshot bounds)
+    {
+        bounds = null!;
+
+        if (windowHandle == IntPtr.Zero || !GetWindowRect(windowHandle, out var rect))
+        {
+            return false;
+        }
+
+        var width = rect.Right - rect.Left;
+        var height = rect.Bottom - rect.Top;
+        if (width <= 0 || height <= 0)
+        {
+            return false;
+        }
+
+        bounds = new PromptAnchorBoundsSnapshot(
+            rect.Left,
+            rect.Top,
+            width,
+            height);
+        return true;
+    }
+
+    private static string? CreateRestoreTargetToken(IntPtr windowHandle)
+    {
+        return windowHandle == IntPtr.Zero
+            ? null
+            : $"hwnd:{windowHandle.ToInt64()}";
+    }
+
+    private static bool TryParseWindowHandleToken(
+        string token,
+        out IntPtr windowHandle)
+    {
+        windowHandle = IntPtr.Zero;
+
+        if (!token.StartsWith("hwnd:", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var handleText = token["hwnd:".Length..];
+        if (!long.TryParse(handleText, out var handleValue) || handleValue <= 0)
+        {
+            return false;
+        }
+
+        windowHandle = new IntPtr(handleValue);
+        return true;
+    }
+
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetForegroundWindow(IntPtr windowHandle);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsWindow(IntPtr windowHandle);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsIconic(IntPtr windowHandle);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool ShowWindow(IntPtr windowHandle, int command);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetWindowRect(IntPtr windowHandle, out Rect rect);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern int GetWindowText(
@@ -700,4 +1033,15 @@ public sealed class AutomationFacade :
 
     [DllImport("user32.dll", EntryPoint = "GetWindowLongW")]
     private static extern int GetWindowLong(IntPtr windowHandle, int index);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Rect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    private const int SwRestore = 9;
 }

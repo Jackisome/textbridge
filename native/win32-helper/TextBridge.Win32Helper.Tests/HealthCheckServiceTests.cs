@@ -82,6 +82,8 @@ public class HealthCheckServiceTests
         Assert.Contains("capture-text", response.Capabilities);
         Assert.Contains("write-text", response.Capabilities);
         Assert.Contains("clipboard-write", response.Capabilities);
+        Assert.Contains("capture-selection-context", response.Capabilities);
+        Assert.Contains("restore-target", response.Capabilities);
     }
 
     [Fact]
@@ -130,7 +132,7 @@ public class HealthCheckServiceTests
         Assert.Contains("\"id\":\"req-1\"", json);
         Assert.Contains("\"kind\":\"health-check\"", json);
         Assert.Contains("\"ok\":true", json);
-        Assert.Contains("\"capabilities\":[\"health-check\",\"capture-text\",\"write-text\",\"clipboard-write\"]", json);
+        Assert.Contains("\"capabilities\":[\"health-check\",\"capture-text\",\"write-text\",\"clipboard-write\",\"capture-selection-context\",\"restore-target\"]", json);
         Assert.Contains("\"error\":null", json);
     }
 

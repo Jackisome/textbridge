@@ -2,7 +2,9 @@ const HELPER_REQUEST_KIND_VALUES = [
   'health-check',
   'capture-text',
   'write-text',
-  'clipboard-write'
+  'clipboard-write',
+  'capture-selection-context',
+  'restore-target'
 ] as const;
 
 export type HelperRequestKind = (typeof HELPER_REQUEST_KIND_VALUES)[number];

@@ -282,6 +282,111 @@ describe('createWin32HelperSessionService', () => {
     });
   });
 
+  it('logs selection-context and restore-target diagnostics with anchor and restore details', async () => {
+    const fakeProcess = createFakeSpawnedProcess();
+    const logger = {
+      debug: vi.fn().mockResolvedValue(undefined),
+      warn: vi.fn().mockResolvedValue(undefined),
+      error: vi.fn().mockResolvedValue(undefined)
+    };
+    const session = createWin32HelperSessionService({
+      isPackaged: false,
+      requestTimeoutMs: 100,
+      spawnHelperProcess: () => fakeProcess.process,
+      logger
+    });
+
+    const capturePromise = session.send('capture-selection-context', {
+      method: 'uia'
+    });
+    await Promise.resolve();
+
+    fakeProcess.respondWith({
+      id: fakeProcess.writtenRequests[0]?.id,
+      kind: 'health-check',
+      ok: true,
+      payload: {},
+      error: null
+    });
+
+    await vi.waitFor(() => {
+      expect(fakeProcess.writtenRequests[1]?.kind).toBe(
+        'capture-selection-context'
+      );
+    });
+
+    fakeProcess.respondWith({
+      id: fakeProcess.writtenRequests[1]?.id,
+      kind: 'capture-selection-context',
+      ok: true,
+      payload: {
+        method: 'uia',
+        text: 'world',
+        anchor: {
+          kind: 'selection-rect',
+          bounds: {
+            x: 10,
+            y: 10,
+            width: 40,
+            height: 20
+          }
+        },
+        restoreTarget: {
+          token: 'hwnd:123'
+        },
+        capabilities: {
+          canPositionPromptNearSelection: true,
+          canRestoreTargetAfterPrompt: true,
+          canAutoWriteBackAfterPrompt: true
+        },
+        diagnostics: {
+          processName: 'notepad',
+          windowClassName: 'Edit'
+        }
+      },
+      error: null
+    });
+
+    await expect(capturePromise).resolves.toMatchObject({
+      kind: 'capture-selection-context',
+      ok: true
+    });
+    expect(logger.debug).toHaveBeenCalledWith(
+      'win32-helper capture-selection-context succeeded; request method=uia; response method=uia textLength=5 anchorKind=selection-rect anchorBounds=10,10,40,20 restoreToken=hwnd:123 canPositionPromptNearSelection=true canRestoreTargetAfterPrompt=true canAutoWriteBackAfterPrompt=true processName=notepad windowClassName=Edit'
+    );
+
+    const restorePromise = session.send('restore-target', {
+      token: 'hwnd:123'
+    });
+
+    await vi.waitFor(() => {
+      expect(fakeProcess.writtenRequests[2]?.kind).toBe('restore-target');
+    });
+
+    fakeProcess.respondWith({
+      id: fakeProcess.writtenRequests[2]?.id,
+      kind: 'restore-target',
+      ok: true,
+      payload: {
+        restored: true,
+        diagnostics: {
+          requestedToken: 'hwnd:123',
+          windowHandle: 123,
+          foregroundRestored: true
+        }
+      },
+      error: null
+    });
+
+    await expect(restorePromise).resolves.toMatchObject({
+      kind: 'restore-target',
+      ok: true
+    });
+    expect(logger.debug).toHaveBeenCalledWith(
+      'win32-helper restore-target succeeded; request token=hwnd:123; restored=true requestedToken=hwnd:123 windowHandle=123 foregroundRestored=true'
+    );
+  });
+
   it('marks the helper as stopped when the process exits', async () => {
     const fakeProcess = createFakeSpawnedProcess();
     const session = createWin32HelperSessionService({
