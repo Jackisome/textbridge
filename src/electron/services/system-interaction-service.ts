@@ -3,6 +3,10 @@ import { decideCaptureFallback } from '../../core/use-cases/decide-capture-fallb
 import { decideWriteBackFallback } from '../../core/use-cases/decide-write-back-fallback';
 import type { TextCaptureResult } from '../../core/entities/text-capture';
 import type { WriteBackResult } from '../../core/entities/write-back';
+import type {
+  RestoreTarget,
+  SelectionContextCapture
+} from '../../shared/types/context-prompt';
 import type { TranslationClientSettings } from '../../shared/types/settings';
 import {
   createWin32Adapter,
@@ -15,6 +19,18 @@ import type {
 
 export interface SystemInteractionService {
   captureSelectedText(settings?: TranslationClientSettings): Promise<TextCaptureResult>;
+  captureSelectionContext(settings?: TranslationClientSettings): Promise<{
+    success: boolean;
+    data?: SelectionContextCapture;
+    errorCode?: string;
+    errorMessage?: string;
+  }>;
+  restoreSelectionTarget(target: RestoreTarget): Promise<{
+    success: boolean;
+    restored: boolean;
+    errorCode?: string;
+    errorMessage?: string;
+  }>;
   writeTranslatedText(
     text: string,
     settings?: TranslationClientSettings,
@@ -25,7 +41,12 @@ export interface SystemInteractionService {
 
 export interface CreateSystemInteractionServiceOptions {
   adapter?: Pick<Win32Adapter, 'captureText' | 'writeText'> &
-    Partial<Pick<Win32Adapter, 'copyToClipboard'>>;
+    Partial<
+      Pick<
+        Win32Adapter,
+        'copyToClipboard' | 'captureSelectionContext' | 'restoreSelectionTarget'
+      >
+    >;
   clipboardWriter?: {
     writeText(text: string): void;
   };
@@ -63,6 +84,104 @@ export function createSystemInteractionService({
         method: 'manual-entry',
         errorCode: 'CAPTURE_NOT_ATTEMPTED',
         errorMessage: 'No capture attempt was executed.'
+      };
+    },
+    async captureSelectionContext(settings?: TranslationClientSettings): Promise<{
+      success: boolean;
+      data?: SelectionContextCapture;
+      errorCode?: string;
+      errorMessage?: string;
+    }> {
+      if (typeof adapter.captureSelectionContext === 'function') {
+        const attempts: Array<{
+          success: boolean;
+          data?: SelectionContextCapture;
+          errorCode?: string;
+          errorMessage?: string;
+        }> = [];
+        const preferredMethod: Win32CaptureMethod =
+          settings?.captureMode === 'clipboard-first' ? 'clipboard' : 'uia';
+
+        attempts.push(await adapter.captureSelectionContext(preferredMethod));
+
+        const decision = decideCaptureFallback({
+          attempts: attempts.map((attempt) =>
+            attempt.success && attempt.data
+              ? {
+                  success: true,
+                  method: attempt.data.captureMethod,
+                  text: attempt.data.sourceText
+                }
+              : {
+                  success: false,
+                  method: preferredMethod,
+                  errorCode: attempt.errorCode,
+                  errorMessage: attempt.errorMessage
+                }
+          ),
+          allowClipboardFallback: settings?.enableClipboardFallback ?? true
+        });
+
+        if (decision.action === 'retry') {
+          attempts.push(await adapter.captureSelectionContext(decision.method));
+        }
+
+        const lastAttempt = attempts.at(-1);
+
+        if (lastAttempt) {
+          return lastAttempt;
+        }
+
+        return {
+          success: false,
+          errorCode: 'CAPTURE_NOT_ATTEMPTED',
+          errorMessage: 'No selection context capture attempt was executed.'
+        };
+      }
+
+      const captureResult = await this.captureSelectedText(settings);
+
+      if (!captureResult.success) {
+        return {
+          success: false,
+          errorCode: captureResult.errorCode,
+          errorMessage: captureResult.errorMessage
+        };
+      }
+
+      return {
+        success: true,
+        data: {
+          sourceText: captureResult.text ?? '',
+          captureMethod: captureResult.method,
+          anchor: {
+            kind: 'unknown'
+          },
+          restoreTarget: null,
+          capabilities: {
+            canPositionPromptNearSelection: false,
+            canRestoreTargetAfterPrompt: false,
+            canAutoWriteBackAfterPrompt: false
+          }
+        }
+      };
+    },
+    async restoreSelectionTarget(target: RestoreTarget): Promise<{
+      success: boolean;
+      restored: boolean;
+      errorCode?: string;
+      errorMessage?: string;
+    }> {
+      if (typeof adapter.restoreSelectionTarget === 'function') {
+        return adapter.restoreSelectionTarget(target);
+      }
+
+      return {
+        success: false,
+        restored: false,
+        errorCode: 'RESTORE_TARGET_UNSUPPORTED',
+        errorMessage:
+          'The current platform adapter does not support restoring the original selection target.'
       };
     },
     async writeTranslatedText(

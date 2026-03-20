@@ -1,5 +1,9 @@
 import type { TextCaptureResult } from '../../../core/entities/text-capture';
 import type { WriteBackResult } from '../../../core/entities/write-back';
+import type {
+  RestoreTarget,
+  SelectionContextCapture
+} from '../../../shared/types/context-prompt';
 import type { HelperResponse } from '../common/helper-protocol';
 import type { Win32HelperSessionService } from './helper-session-service';
 import {
@@ -11,6 +15,18 @@ import type { Win32CaptureMethod, Win32WriteMethod } from './protocol';
 
 export interface Win32Adapter {
   captureText(method: Win32CaptureMethod): Promise<TextCaptureResult>;
+  captureSelectionContext?(method: Win32CaptureMethod): Promise<{
+    success: boolean;
+    data?: SelectionContextCapture;
+    errorCode?: string;
+    errorMessage?: string;
+  }>;
+  restoreSelectionTarget?(target: RestoreTarget): Promise<{
+    success: boolean;
+    restored: boolean;
+    errorCode?: string;
+    errorMessage?: string;
+  }>;
   writeText(
     text: string,
     method: Win32WriteMethod,

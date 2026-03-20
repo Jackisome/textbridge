@@ -97,4 +97,38 @@ describe('createExecutionReportService', () => {
     expect(runtimeStatus.helperLastErrorCode).toBeNull();
     expect(runtimeStatus.helperPid).toBeNull();
   });
+
+  it('records cancelled executions without treating them as failures', () => {
+    const service = createExecutionReportService();
+
+    service.record(
+      {
+        id: 'report-cancelled',
+        workflow: 'context-translation',
+        status: 'cancelled',
+        startedAt: '2026-03-20T10:00:00.000Z',
+        completedAt: '2026-03-20T10:00:03.000Z',
+        captureMethod: 'uia',
+        sourceTextLength: 5,
+        translatedTextLength: 0,
+        errorCode: 'CONTEXT_INPUT_CANCELLED',
+        errorMessage: 'Context instructions were cancelled.'
+      },
+      {
+        sourceText: 'hello'
+      }
+    );
+
+    const [entry] = service.getRecentExecutions();
+
+    expect(entry).toMatchObject({
+      id: 'report-cancelled',
+      workflow: 'context-translation',
+      status: 'cancelled',
+      errorCode: 'CONTEXT_INPUT_CANCELLED',
+      errorMessage: 'Context instructions were cancelled.',
+      sourceTextPreview: 'hello'
+    });
+    expect(entry.translatedTextPreview).toBeUndefined();
+  });
 });

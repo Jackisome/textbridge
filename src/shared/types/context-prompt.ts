@@ -11,6 +11,25 @@ export interface PromptAnchor {
   displayId?: string;
 }
 
+export interface RestoreTarget {
+  platform: 'win32' | 'darwin' | 'linux';
+  token: string;
+}
+
+export interface SelectionContextCapabilities {
+  canPositionPromptNearSelection: boolean;
+  canRestoreTargetAfterPrompt: boolean;
+  canAutoWriteBackAfterPrompt: boolean;
+}
+
+export interface SelectionContextCapture {
+  sourceText: string;
+  captureMethod: 'uia' | 'clipboard' | 'manual-entry';
+  anchor: PromptAnchor;
+  restoreTarget: RestoreTarget | null;
+  capabilities: SelectionContextCapabilities;
+}
+
 export interface PromptSession {
   sourceText: string;
   anchor: PromptAnchor;

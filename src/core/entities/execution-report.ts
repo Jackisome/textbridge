@@ -7,7 +7,8 @@ export type ExecutionStatus =
   | 'running'
   | 'completed'
   | 'failed'
-  | 'fallback-required';
+  | 'fallback-required'
+  | 'cancelled';
 
 export interface ExecutionReport {
   id: string;

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { DEFAULT_SETTINGS } from '../../shared/constants/default-settings';
+import type { RestoreTarget } from '../../shared/types/context-prompt';
 import { createSystemInteractionService } from './system-interaction-service';
 
 describe('createSystemInteractionService', () => {
@@ -174,5 +175,159 @@ describe('createSystemInteractionService', () => {
 
     expect(adapter.copyToClipboard).toHaveBeenCalledWith('translated text');
     expect(clipboardWriter.writeText).not.toHaveBeenCalled();
+  });
+
+  it('captures richer selection context through clipboard fallback when the first attempt is unsupported', async () => {
+    const adapter = {
+      captureText: vi.fn(),
+      writeText: vi.fn(),
+      copyToClipboard: vi.fn().mockResolvedValue(undefined),
+      captureSelectionContext: vi
+        .fn()
+        .mockResolvedValueOnce({
+          success: false,
+          errorCode: 'TEXT_CAPTURE_UNSUPPORTED',
+          errorMessage: 'UI Automation is not available for the focused element.'
+        })
+        .mockResolvedValueOnce({
+          success: true,
+          data: {
+            sourceText: 'copied text',
+            captureMethod: 'clipboard',
+            anchor: {
+              kind: 'selection-rect',
+              bounds: { x: 12, y: 24, width: 80, height: 18 },
+              displayId: 'display-1'
+            },
+            restoreTarget: {
+              platform: 'win32',
+              token: 'hwnd:123'
+            },
+            capabilities: {
+              canPositionPromptNearSelection: true,
+              canRestoreTargetAfterPrompt: true,
+              canAutoWriteBackAfterPrompt: false
+            }
+          }
+        })
+    };
+    const service = createSystemInteractionService({
+      adapter
+    });
+
+    await expect(
+      service.captureSelectionContext({
+        ...DEFAULT_SETTINGS,
+        capture: {
+          preferredMethod: 'uia',
+          allowClipboardFallback: true
+        }
+      })
+    ).resolves.toEqual({
+      success: true,
+      data: {
+        sourceText: 'copied text',
+        captureMethod: 'clipboard',
+        anchor: {
+          kind: 'selection-rect',
+          bounds: { x: 12, y: 24, width: 80, height: 18 },
+          displayId: 'display-1'
+        },
+        restoreTarget: {
+          platform: 'win32',
+          token: 'hwnd:123'
+        },
+        capabilities: {
+          canPositionPromptNearSelection: true,
+          canRestoreTargetAfterPrompt: true,
+          canAutoWriteBackAfterPrompt: false
+        }
+      }
+    });
+
+    expect(adapter.captureSelectionContext).toHaveBeenCalledTimes(2);
+    expect(adapter.captureSelectionContext).toHaveBeenNthCalledWith(1, 'uia');
+    expect(adapter.captureSelectionContext).toHaveBeenNthCalledWith(2, 'clipboard');
+  });
+
+  it('derives a portable default selection context when the adapter does not provide richer metadata yet', async () => {
+    const adapter = {
+      captureText: vi.fn().mockResolvedValue({
+        success: true,
+        method: 'uia',
+        text: 'captured text'
+      }),
+      writeText: vi.fn(),
+      copyToClipboard: vi.fn().mockResolvedValue(undefined)
+    };
+    const service = createSystemInteractionService({
+      adapter
+    });
+
+    await expect(service.captureSelectionContext(DEFAULT_SETTINGS)).resolves.toEqual({
+      success: true,
+      data: {
+        sourceText: 'captured text',
+        captureMethod: 'uia',
+        anchor: {
+          kind: 'unknown'
+        },
+        restoreTarget: null,
+        capabilities: {
+          canPositionPromptNearSelection: false,
+          canRestoreTargetAfterPrompt: false,
+          canAutoWriteBackAfterPrompt: false
+        }
+      }
+    });
+  });
+
+  it('restores the original selection target through the richer adapter contract', async () => {
+    const adapter = {
+      captureText: vi.fn(),
+      writeText: vi.fn(),
+      copyToClipboard: vi.fn().mockResolvedValue(undefined),
+      restoreSelectionTarget: vi.fn().mockResolvedValue({
+        success: true,
+        restored: true
+      })
+    };
+    const service = createSystemInteractionService({
+      adapter
+    });
+    const restoreTarget: RestoreTarget = {
+      platform: 'win32',
+      token: 'hwnd:123'
+    };
+
+    await expect(service.restoreSelectionTarget(restoreTarget)).resolves.toEqual({
+      success: true,
+      restored: true
+    });
+    expect(adapter.restoreSelectionTarget).toHaveBeenCalledWith(restoreTarget);
+  });
+
+  it('returns an explicit unsupported result when restore is unavailable in the adapter', async () => {
+    const adapter = {
+      captureText: vi.fn(),
+      writeText: vi.fn(),
+      copyToClipboard: vi.fn().mockResolvedValue(undefined)
+    };
+    const service = createSystemInteractionService({
+      adapter
+    });
+
+    await expect(
+      service.restoreSelectionTarget({
+        platform: 'win32',
+        token: 'hwnd:123'
+      })
+    ).resolves.toEqual({
+      success: false,
+      restored: false,
+      errorCode: 'RESTORE_TARGET_UNSUPPORTED',
+      errorMessage:
+        'The current platform adapter does not support restoring the original selection target.'
+    });
   });
 });

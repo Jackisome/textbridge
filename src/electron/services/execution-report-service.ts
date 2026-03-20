@@ -66,6 +66,7 @@ function toRuntimeExecutionEntry(
 ): RuntimeExecutionEntry {
   return {
     ...report,
+    status: report.status,
     sourceTextPreview: sanitizeTextPreview(context.sourceText),
     translatedTextPreview: sanitizeTextPreview(context.translatedText)
   };
