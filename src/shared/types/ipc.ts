@@ -1,6 +1,6 @@
 import type { ExecutionReport } from '../../core/entities/execution-report';
 import type { TranslationRequest } from '../../core/entities/translation';
-import type { PromptSession } from './context-prompt';
+import type { PromptSession, PromptSubmission } from './context-prompt';
 import type { TranslationClientSettings, TranslationProviderKind } from './settings';
 
 export interface RuntimeExecutionEntry extends ExecutionReport {
@@ -38,6 +38,9 @@ export interface DesktopApi {
   getSettings(): Promise<TranslationClientSettings>;
   saveSettings(settings: TranslationClientSettings): Promise<TranslationClientSettings>;
   getRuntimeStatus(): Promise<RuntimeStatus>;
+  getContextPromptSession?: () => Promise<PromptSession | null>;
+  submitContextPrompt?: (submission: PromptSubmission) => Promise<void>;
+  cancelContextPrompt?: () => Promise<void>;
 }
 
 export interface ElectronInfo {

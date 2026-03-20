@@ -1,8 +1,11 @@
 import { app, globalShortcut } from 'electron';
 import path from 'node:path';
 import { DEFAULT_SETTINGS } from '../shared/constants/default-settings';
+import { registerContextPromptIpc } from './ipc/register-context-prompt-ipc';
 import { registerSettingsIpc } from './ipc/register-settings-ipc';
 import { createDefaultProviderRegistry } from './services/providers/provider-registry';
+import { createContextPromptSessionService } from './services/context-prompt-session-service';
+import { createContextPromptWindowService } from './services/context-prompt-window-service';
 import { createWin32Adapter } from './platform/win32/adapter';
 import { createWin32HelperSessionService } from './platform/win32/helper-session-service';
 import { createContextTranslationRunner } from './services/context-translation-runner';
@@ -86,6 +89,12 @@ void app.whenReady().then(async () => {
     isPackaged: app.isPackaged,
     baseDirectoryPath: app.getPath('userData')
   });
+  const contextPromptSessionService = createContextPromptSessionService();
+  const contextPromptWindowService = createContextPromptWindowService({
+    rendererDevUrl,
+    rendererProdHtml,
+    preloadPath: path.join(__dirname, 'preload.js')
+  });
 
   helperSessionService = createWin32HelperSessionService({
     isPackaged: app.isPackaged,
@@ -163,6 +172,11 @@ void app.whenReady().then(async () => {
     }
   });
 
+  registerContextPromptIpc({
+    promptSessionService: contextPromptSessionService,
+    promptWindowService: contextPromptWindowService
+  });
+
   const mainWindow = await windowService.ensureMainWindow();
 
   if (currentSettings.startMinimized) {
@@ -206,4 +220,3 @@ async function runTranslationWorkflow(
     await handleRunnerFailure(workflow, error);
   }
 }
-

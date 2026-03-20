@@ -35,7 +35,8 @@ const preloadContractShape: PreloadContractShape = {
     outputMode: DEFAULT_SETTINGS.outputMode
   },
   lastExecution: null,
-  settingsSnapshot: DEFAULT_SETTINGS
+  settingsSnapshot: DEFAULT_SETTINGS,
+  contextPromptSession: null
 };
 
 contextBridge.exposeInMainWorld('electronInfo', electronInfo);
