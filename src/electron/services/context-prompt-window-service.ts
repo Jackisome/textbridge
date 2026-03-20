@@ -90,11 +90,20 @@ export function createContextPromptWindowService({
       activeWindow = null;
     });
 
-    await activeWindow.loadURL(
-      toContextPromptUrl(rendererDevUrl, rendererProdHtml, options)
-    );
-    activeWindow.show();
-    activeWindow.focus();
+    try {
+      await activeWindow.loadURL(
+        toContextPromptUrl(rendererDevUrl, rendererProdHtml, options)
+      );
+      activeWindow.show();
+      activeWindow.focus();
+    } catch (error) {
+      const failedWindow = activeWindow;
+      activeWindow = null;
+      if (!failedWindow.isDestroyed()) {
+        failedWindow.destroy();
+      }
+      throw error;
+    }
 
     return activeWindow;
   }
