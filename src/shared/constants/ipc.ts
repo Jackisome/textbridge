@@ -8,6 +8,11 @@ export const IPC_CHANNELS = {
     get: SETTINGS_IPC_CHANNELS.getSettings,
     save: SETTINGS_IPC_CHANNELS.saveSettings
   },
+  contextPrompt: {
+    getSession: 'contextPrompt:getSession',
+    submit: 'contextPrompt:submit',
+    cancel: 'contextPrompt:cancel'
+  },
   runtime: {
     getStatus: 'runtime:get-status'
   }

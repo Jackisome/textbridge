@@ -1,5 +1,6 @@
 import type { ExecutionReport } from '../../core/entities/execution-report';
 import type { TranslationRequest } from '../../core/entities/translation';
+import type { PromptSession } from './context-prompt';
 import type { TranslationClientSettings, TranslationProviderKind } from './settings';
 
 export interface RuntimeExecutionEntry extends ExecutionReport {
@@ -30,6 +31,7 @@ export interface PreloadContractShape {
   draftRequest: TranslationRequest | null;
   lastExecution: ExecutionReport | null;
   settingsSnapshot: TranslationClientSettings | null;
+  contextPromptSession?: PromptSession | null;
 }
 
 export interface DesktopApi {
