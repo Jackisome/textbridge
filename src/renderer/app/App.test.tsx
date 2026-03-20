@@ -47,7 +47,10 @@ describe('App settings persistence', () => {
     window.textBridge = {
       getSettings,
       saveSettings,
-      getRuntimeStatus
+      getRuntimeStatus,
+      getContextPromptSession: vi.fn().mockResolvedValue(null),
+      submitContextPrompt: vi.fn().mockResolvedValue(undefined),
+      cancelContextPrompt: vi.fn().mockResolvedValue(undefined)
     };
 
     render(<App />);
@@ -88,7 +91,10 @@ describe('App settings persistence', () => {
     window.textBridge = {
       getSettings,
       saveSettings,
-      getRuntimeStatus
+      getRuntimeStatus,
+      getContextPromptSession: vi.fn().mockResolvedValue(null),
+      submitContextPrompt: vi.fn().mockResolvedValue(undefined),
+      cancelContextPrompt: vi.fn().mockResolvedValue(undefined)
     };
 
     render(<App />);

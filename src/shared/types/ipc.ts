@@ -31,16 +31,16 @@ export interface PreloadContractShape {
   draftRequest: TranslationRequest | null;
   lastExecution: ExecutionReport | null;
   settingsSnapshot: TranslationClientSettings | null;
-  contextPromptSession?: PromptSession | null;
+  contextPromptSession: PromptSession | null;
 }
 
 export interface DesktopApi {
   getSettings(): Promise<TranslationClientSettings>;
   saveSettings(settings: TranslationClientSettings): Promise<TranslationClientSettings>;
   getRuntimeStatus(): Promise<RuntimeStatus>;
-  getContextPromptSession?: () => Promise<PromptSession | null>;
-  submitContextPrompt?: (submission: PromptSubmission) => Promise<void>;
-  cancelContextPrompt?: () => Promise<void>;
+  getContextPromptSession(): Promise<PromptSession | null>;
+  submitContextPrompt(submission: PromptSubmission): Promise<void>;
+  cancelContextPrompt(): Promise<void>;
 }
 
 export interface ElectronInfo {

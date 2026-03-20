@@ -13,7 +13,7 @@ export interface TextBridgeApi {
   getSettings: () => Promise<TranslationClientSettings>;
   saveSettings: (settings: TranslationClientSettings) => Promise<TranslationClientSettings>;
   getRuntimeStatus: () => Promise<RuntimeStatus>;
-  getContextPromptSession?: () => Promise<PromptSession | null>;
-  submitContextPrompt?: (submission: PromptSubmission) => Promise<void>;
-  cancelContextPrompt?: () => Promise<void>;
+  getContextPromptSession: () => Promise<PromptSession | null>;
+  submitContextPrompt: (submission: PromptSubmission) => Promise<void>;
+  cancelContextPrompt: () => Promise<void>;
 }
