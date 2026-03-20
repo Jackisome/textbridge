@@ -7,7 +7,7 @@ declare global {
   interface Window {
     electronInfo: ElectronInfo;
     textBridge: TextBridgeApi;
-    textBridgeContracts?: PreloadContractShape;
+    textBridgeContracts?: PreloadContractShape | null;
   }
 }
 

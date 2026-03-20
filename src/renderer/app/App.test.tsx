@@ -23,6 +23,55 @@ describe('App settings persistence', () => {
       node: '24',
       platform: 'win32'
     };
+    window.history.pushState({}, '', '/');
+    window.textBridgeContracts = undefined;
+  });
+
+  it('routes the context popup through the prompt session api', async () => {
+    const getContextPromptSession = vi.fn().mockResolvedValue({
+      sourceText: 'Real prompt session source text',
+      anchor: { kind: 'cursor' }
+    });
+
+    window.history.pushState({}, '', '/?view=context-popup');
+    window.textBridgeContracts = {
+      draftRequest: {
+        text: 'Stale draft request text',
+        sourceLanguage: 'en',
+        targetLanguage: 'zh',
+        outputMode: 'replace-original'
+      },
+      lastExecution: null,
+      settingsSnapshot: null,
+      contextPromptSession: null
+    };
+    window.textBridge = {
+      getSettings: vi.fn().mockResolvedValue(createSettings()),
+      saveSettings: vi.fn().mockResolvedValue(createSettings()),
+      getRuntimeStatus: vi.fn().mockResolvedValue({
+        ready: true,
+        platform: 'win32',
+        activeProvider: 'mock',
+        registeredShortcuts: [],
+        helperState: 'idle',
+        helperLastErrorCode: null,
+        helperPid: null,
+        lastExecution: null,
+        recentExecutions: []
+      }),
+      getContextPromptSession,
+      submitContextPrompt: vi.fn().mockResolvedValue(undefined),
+      cancelContextPrompt: vi.fn().mockResolvedValue(undefined)
+    };
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(getContextPromptSession).toHaveBeenCalledTimes(1);
+    });
+
+    expect(await screen.findByText('Real prompt session source text')).not.toBeNull();
+    expect(screen.queryByText('Stale draft request text')).toBeNull();
   });
 
   it('loads settings through the preload api on startup', async () => {

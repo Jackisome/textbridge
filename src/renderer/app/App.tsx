@@ -3,15 +3,11 @@ import { useEffect, useState } from 'react';
 import { defaultTranslationClientSettings } from '../../shared/constants/default-settings';
 import type { RuntimeStatus } from '../../shared/types/ipc';
 import type { ElectronInfo } from '../../shared/types/preload';
+import { cancelContextPrompt, getContextPromptSession, submitContextPrompt } from '../services/context-prompt-api';
+import { loadPersistedSettings, savePersistedSettings, cloneSettings, areSettingsEqual } from '../services/settings-storage';
 import { ContextPopupPage } from '../pages/context-popup-page';
 import { FallbackResultPage } from '../pages/fallback-result-page';
 import { SettingsPage } from '../pages/settings-page';
-import {
-  areSettingsEqual,
-  cloneSettings,
-  loadPersistedSettings,
-  savePersistedSettings
-} from '../services/settings-storage';
 import type { ProviderId, ProviderSettingsMap, TranslationClientSettings } from '../types/settings';
 
 interface AppState {
@@ -29,6 +25,9 @@ const fallbackElectronInfo: ElectronInfo = {
   platform: 'unknown'
 };
 
+const fallbackContextPromptSourceText =
+  'Paste or capture text before submitting extra translation instructions.';
+
 function createInitialState(): AppState {
   return {
     settings: cloneSettings(defaultTranslationClientSettings),
@@ -42,6 +41,7 @@ function createInitialState(): AppState {
 export default function App() {
   const [appState, setAppState] = useState<AppState>(createInitialState);
   const [runtimeStatus, setRuntimeStatus] = useState<RuntimeStatus | null>(null);
+  const [contextPromptSourceText, setContextPromptSourceText] = useState(fallbackContextPromptSourceText);
   const electronInfo = window.electronInfo ?? fallbackElectronInfo;
   const view = new URLSearchParams(window.location.search).get('view');
   const isDirty = !areSettingsEqual(appState.settings, appState.savedSettings);
@@ -91,13 +91,40 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (view !== 'context-popup') {
+      return;
+    }
+
+    let disposed = false;
+
+    const loadContextPrompt = async () => {
+      const session = await getContextPromptSession().catch(() => null);
+
+      if (disposed) {
+        return;
+      }
+
+      setContextPromptSourceText(session?.sourceText ?? fallbackContextPromptSourceText);
+    };
+
+    void loadContextPrompt();
+
+    return () => {
+      disposed = true;
+    };
+  }, [view]);
+
   if (view === 'context-popup') {
     return (
       <ContextPopupPage
-        sourceText={
-          window.textBridgeContracts?.draftRequest?.text ??
-          'Paste or capture text before submitting extra translation instructions.'
-        }
+        sourceText={contextPromptSourceText}
+        onCancel={() => {
+          void cancelContextPrompt();
+        }}
+        onSubmit={(instructions) => {
+          void submitContextPrompt(instructions);
+        }}
       />
     );
   }
