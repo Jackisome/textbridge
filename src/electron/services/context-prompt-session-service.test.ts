@@ -43,15 +43,18 @@ describe('createContextPromptSessionService', () => {
     expect(service.getActive()).toBeNull();
   });
 
-  it('clear removes the active prompt session without resolving it', () => {
+  it('clear resolves the active prompt session as cleared', async () => {
     const service = createContextPromptSessionService();
-
-    service.open({
+    const pending = service.open({
       sourceText: 'clear me',
       anchor: { kind: 'cursor' }
     });
 
     service.clear();
+
+    await expect(pending).resolves.toEqual({
+      status: 'cleared'
+    });
 
     expect(service.getActive()).toBeNull();
   });

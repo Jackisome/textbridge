@@ -1,10 +1,8 @@
 import type {
   PromptAnchor,
-  PromptCancelledResult,
   PromptSession,
   PromptSessionResult,
   PromptSubmission,
-  PromptSubmittedResult
 } from '../../shared/types/context-prompt';
 
 export interface ContextPromptSessionService {
@@ -51,9 +49,16 @@ export function createContextPromptSessionService(): ContextPromptSessionService
   }
 
   function clear(): void {
-    activeSession = null;
-    activeResolve = null;
-    activePromise = null;
+    if (!activeResolve) {
+      resetActiveSession();
+      return;
+    }
+
+    const resolve = activeResolve;
+    resetActiveSession();
+    resolve({
+      status: 'cleared'
+    });
   }
 
   function resolveActiveSession(result: PromptSessionResult): void {
@@ -62,8 +67,14 @@ export function createContextPromptSessionService(): ContextPromptSessionService
     }
 
     const resolve = activeResolve;
-    clear();
+    resetActiveSession();
     resolve(result);
+  }
+
+  function resetActiveSession(): void {
+    activeSession = null;
+    activeResolve = null;
+    activePromise = null;
   }
 
   return {

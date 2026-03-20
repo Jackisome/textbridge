@@ -29,4 +29,11 @@ export interface PromptCancelledResult {
   status: 'cancelled';
 }
 
-export type PromptSessionResult = PromptSubmittedResult | PromptCancelledResult;
+export interface PromptClearedResult {
+  status: 'cleared';
+}
+
+export type PromptSessionResult =
+  | PromptSubmittedResult
+  | PromptCancelledResult
+  | PromptClearedResult;
