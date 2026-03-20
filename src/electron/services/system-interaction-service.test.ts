@@ -29,10 +29,8 @@ describe('createSystemInteractionService', () => {
     await expect(
       service.captureSelectedText({
         ...DEFAULT_SETTINGS,
-        capture: {
-          preferredMethod: 'uia',
-          allowClipboardFallback: true
-        }
+        captureMode: 'uia-first',
+        enableClipboardFallback: true
       })
     ).resolves.toEqual({
       success: true,
@@ -62,10 +60,8 @@ describe('createSystemInteractionService', () => {
     await expect(
       service.captureSelectedText({
         ...DEFAULT_SETTINGS,
-        capture: {
-          preferredMethod: 'uia',
-          allowClipboardFallback: false
-        }
+        captureMode: 'uia-first',
+        enableClipboardFallback: false
       })
     ).resolves.toEqual({
       success: false,
@@ -73,6 +69,8 @@ describe('createSystemInteractionService', () => {
       errorCode: 'TEXT_CAPTURE_NO_SELECTION',
       errorMessage: 'No selection is available.'
     });
+    expect(adapter.captureText).toHaveBeenCalledTimes(1);
+    expect(adapter.captureText).toHaveBeenCalledWith('uia');
   });
 
   it('returns popup-fallback after replace and paste both fail', async () => {
@@ -101,11 +99,8 @@ describe('createSystemInteractionService', () => {
     await expect(
       service.writeTranslatedText('你好', {
         ...DEFAULT_SETTINGS,
-        writeBack: {
-          outputMode: 'replace-original',
-          allowPasteFallback: true,
-          allowPopupFallback: true
-        }
+        outputMode: 'replace-original',
+        enablePopupFallback: true
       })
     ).resolves.toEqual({
       success: false,
@@ -113,6 +108,19 @@ describe('createSystemInteractionService', () => {
       errorCode: 'POPUP_FALLBACK_REQUIRED',
       errorMessage: 'Write-back failed, popup fallback is required.'
     });
+    expect(adapter.writeText).toHaveBeenCalledTimes(2);
+    expect(adapter.writeText).toHaveBeenNthCalledWith(
+      1,
+      '你好',
+      'replace-selection',
+      undefined
+    );
+    expect(adapter.writeText).toHaveBeenNthCalledWith(
+      2,
+      '你好',
+      'paste-translation',
+      undefined
+    );
   });
 
   it('passes the expected source text through both write-back attempts', async () => {
@@ -218,10 +226,8 @@ describe('createSystemInteractionService', () => {
     await expect(
       service.captureSelectionContext({
         ...DEFAULT_SETTINGS,
-        capture: {
-          preferredMethod: 'uia',
-          allowClipboardFallback: true
-        }
+        captureMode: 'uia-first',
+        enableClipboardFallback: true
       })
     ).resolves.toEqual({
       success: true,
@@ -280,6 +286,8 @@ describe('createSystemInteractionService', () => {
         }
       }
     });
+    expect(adapter.captureText).toHaveBeenCalledTimes(1);
+    expect(adapter.captureText).toHaveBeenCalledWith('uia');
   });
 
   it('restores the original selection target through the richer adapter contract', async () => {
@@ -304,6 +312,7 @@ describe('createSystemInteractionService', () => {
       success: true,
       restored: true
     });
+    expect(adapter.restoreSelectionTarget).toHaveBeenCalledTimes(1);
     expect(adapter.restoreSelectionTarget).toHaveBeenCalledWith(restoreTarget);
   });
 
@@ -329,5 +338,31 @@ describe('createSystemInteractionService', () => {
       errorMessage:
         'The current platform adapter does not support restoring the original selection target.'
     });
+  });
+
+  it('rejects restore targets for non-win32 platforms before calling the adapter', async () => {
+    const adapter = {
+      captureText: vi.fn(),
+      writeText: vi.fn(),
+      copyToClipboard: vi.fn().mockResolvedValue(undefined),
+      restoreSelectionTarget: vi.fn()
+    };
+    const service = createSystemInteractionService({
+      adapter
+    });
+
+    await expect(
+      service.restoreSelectionTarget({
+        platform: 'darwin',
+        token: 'ax:123'
+      })
+    ).resolves.toEqual({
+      success: false,
+      restored: false,
+      errorCode: 'RESTORE_TARGET_PLATFORM_UNSUPPORTED',
+      errorMessage:
+        'The current system interaction service only supports restoring win32 selection targets.'
+    });
+    expect(adapter.restoreSelectionTarget).not.toHaveBeenCalled();
   });
 });

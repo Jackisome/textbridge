@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { DEFAULT_SETTINGS } from '../../shared/constants/default-settings';
 import { createContextTranslationRunner } from './context-translation-runner';
 
@@ -189,5 +189,60 @@ describe('createContextTranslationRunner', () => {
         expectedSourceText: ' world '
       }
     ]);
+  });
+
+  it('returns cancelled and stops before translation or write-back when prompt input is cancelled', async () => {
+    const translateWithSettings = vi.fn();
+    const writeTranslatedText = vi.fn();
+    const copyToClipboard = vi.fn();
+    const showFallbackResult = vi.fn();
+
+    const runner = createContextTranslationRunner({
+      settingsService: {
+        async getSettings() {
+          return DEFAULT_SETTINGS;
+        }
+      },
+      systemInteractionService: {
+        async captureSelectedText() {
+          return {
+            success: true,
+            method: 'uia',
+            text: 'Please summarize this paragraph.'
+          };
+        },
+        writeTranslatedText,
+        copyToClipboard
+      },
+      translationProviderService: {
+        translateWithSettings
+      },
+      popupService: {
+        async requestContextInstructions() {
+          return null;
+        },
+        showFallbackResult
+      },
+      createReportId: () => 'context-report-cancelled',
+      now: () => '2026-03-20T10:00:00.000Z'
+    });
+
+    await expect(runner.run()).resolves.toEqual({
+      id: 'context-report-cancelled',
+      workflow: 'context-translation',
+      status: 'cancelled',
+      startedAt: '2026-03-20T10:00:00.000Z',
+      completedAt: '2026-03-20T10:00:00.000Z',
+      captureMethod: 'uia',
+      sourceTextLength: 32,
+      translatedTextLength: 0,
+      errorCode: 'CONTEXT_INPUT_CANCELLED',
+      errorMessage: 'Context instructions were cancelled.'
+    });
+
+    expect(translateWithSettings).not.toHaveBeenCalled();
+    expect(writeTranslatedText).not.toHaveBeenCalled();
+    expect(copyToClipboard).not.toHaveBeenCalled();
+    expect(showFallbackResult).not.toHaveBeenCalled();
   });
 });

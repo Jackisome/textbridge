@@ -172,6 +172,16 @@ export function createSystemInteractionService({
       errorCode?: string;
       errorMessage?: string;
     }> {
+      if (target.platform !== 'win32') {
+        return {
+          success: false,
+          restored: false,
+          errorCode: 'RESTORE_TARGET_PLATFORM_UNSUPPORTED',
+          errorMessage:
+            'The current system interaction service only supports restoring win32 selection targets.'
+        };
+      }
+
       if (typeof adapter.restoreSelectionTarget === 'function') {
         return adapter.restoreSelectionTarget(target);
       }

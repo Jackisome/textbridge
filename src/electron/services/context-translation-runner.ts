@@ -99,7 +99,7 @@ export function createContextTranslationRunner({
         const report: ExecutionReport = {
           id: createReportId(),
           workflow: 'context-translation',
-          status: 'failed',
+          status: 'cancelled',
           startedAt,
           completedAt: now(),
           captureMethod: captureResult.method,
