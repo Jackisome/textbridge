@@ -39,9 +39,6 @@ const fallbackElectronInfo: ElectronInfo = {
   platform: 'unknown'
 };
 
-const fallbackContextPromptSourceText =
-  'Paste or capture text before submitting extra translation instructions.';
-
 function createInitialState(): AppState {
   return {
     settings: cloneSettings(defaultTranslationClientSettings),
@@ -74,12 +71,12 @@ function ContextPromptStatusPage({
           </div>
         </header>
 
-        <div className="popup-source popup-source--status">
+        <div className="popup-source">
           <strong>Prompt Session</strong>
           <p>Waiting for a ready prompt session from the main process.</p>
         </div>
 
-        <div className="popup-actions popup-actions--single">
+        <div className="popup-actions">
           <button
             className="popup-button ghost"
             type="button"
@@ -300,9 +297,7 @@ function ContextPopupRoute() {
     <ContextPopupPage
       sourceText={session.sourceText}
       onCancel={handleCancel}
-      onSubmit={(instructions) => {
-        void submitContextPrompt(instructions);
-      }}
+      onSubmit={submitContextPrompt}
     />
   );
 }

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -121,6 +121,41 @@ describe('ContextPopupPage', () => {
     await waitFor(() => {
       expect(onCancel).toHaveBeenCalledTimes(1);
       expect(onSubmit).not.toHaveBeenCalled();
+    });
+  });
+
+  it('does not submit twice while the first submit is still pending', async () => {
+    const user = userEvent.setup();
+    let resolveSubmit: (() => void) | undefined;
+    const onSubmit = vi.fn().mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveSubmit = resolve;
+        })
+    );
+    const onCancel = vi.fn();
+
+    render(
+      <ContextPopupPage
+        sourceText="Original source text"
+        onSubmit={onSubmit}
+        onCancel={onCancel}
+      />
+    );
+
+    const textarea = screen.getByLabelText('Instructions');
+    await user.type(textarea, 'Hold this submit open');
+    await user.click(screen.getByRole('button', { name: 'Translate' }));
+
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+
+    fireEvent.keyDown(textarea, { key: 'Enter', isComposing: false });
+    await user.click(screen.getByRole('button', { name: 'Translate' }));
+
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveSubmit?.();
     });
   });
 });
