@@ -3,12 +3,26 @@ import { useEffect, useState } from 'react';
 import { defaultTranslationClientSettings } from '../../shared/constants/default-settings';
 import type { RuntimeStatus } from '../../shared/types/ipc';
 import type { ElectronInfo } from '../../shared/types/preload';
-import { cancelContextPrompt, getContextPromptSession, submitContextPrompt } from '../services/context-prompt-api';
-import { loadPersistedSettings, savePersistedSettings, cloneSettings, areSettingsEqual } from '../services/settings-storage';
 import { ContextPopupPage } from '../pages/context-popup-page';
 import { FallbackResultPage } from '../pages/fallback-result-page';
 import { SettingsPage } from '../pages/settings-page';
-import type { ProviderId, ProviderSettingsMap, TranslationClientSettings } from '../types/settings';
+import {
+  cancelContextPrompt,
+  getContextPromptSession,
+  submitContextPrompt
+} from '../services/context-prompt-api';
+import {
+  areSettingsEqual,
+  cloneSettings,
+  loadPersistedSettings,
+  savePersistedSettings
+} from '../services/settings-storage';
+import type { PromptSession } from '../../shared/types/context-prompt';
+import type {
+  ProviderId,
+  ProviderSettingsMap,
+  TranslationClientSettings
+} from '../types/settings';
 
 interface AppState {
   settings: TranslationClientSettings;
@@ -38,12 +52,54 @@ function createInitialState(): AppState {
   };
 }
 
-export default function App() {
+type ContextPromptRouteState = 'loading' | 'loaded' | 'missing-session';
+
+function ContextPromptStatusPage({
+  message,
+  onCancel,
+  isCancelling = false
+}: {
+  message: string;
+  onCancel: () => Promise<void> | void;
+  isCancelling?: boolean;
+}) {
+  return (
+    <main className="popup-shell">
+      <section className="popup-card">
+        <span className="popup-kicker">Context Prompt</span>
+        <header className="popup-header">
+          <div>
+            <h1>Context Translation</h1>
+            <p className="popup-copy">{message}</p>
+          </div>
+        </header>
+
+        <div className="popup-source popup-source--status">
+          <strong>Prompt Session</strong>
+          <p>Waiting for a ready prompt session from the main process.</p>
+        </div>
+
+        <div className="popup-actions popup-actions--single">
+          <button
+            className="popup-button ghost"
+            type="button"
+            onClick={() => {
+              void onCancel();
+            }}
+            disabled={isCancelling}
+          >
+            Cancel
+          </button>
+        </div>
+      </section>
+    </main>
+  );
+}
+
+function SettingsRoute() {
   const [appState, setAppState] = useState<AppState>(createInitialState);
   const [runtimeStatus, setRuntimeStatus] = useState<RuntimeStatus | null>(null);
-  const [contextPromptSourceText, setContextPromptSourceText] = useState(fallbackContextPromptSourceText);
   const electronInfo = window.electronInfo ?? fallbackElectronInfo;
-  const view = new URLSearchParams(window.location.search).get('view');
   const isDirty = !areSettingsEqual(appState.settings, appState.savedSettings);
 
   useEffect(() => {
@@ -90,48 +146,6 @@ export default function App() {
       window.clearInterval(intervalId);
     };
   }, []);
-
-  useEffect(() => {
-    if (view !== 'context-popup') {
-      return;
-    }
-
-    let disposed = false;
-
-    const loadContextPrompt = async () => {
-      const session = await getContextPromptSession().catch(() => null);
-
-      if (disposed) {
-        return;
-      }
-
-      setContextPromptSourceText(session?.sourceText ?? fallbackContextPromptSourceText);
-    };
-
-    void loadContextPrompt();
-
-    return () => {
-      disposed = true;
-    };
-  }, [view]);
-
-  if (view === 'context-popup') {
-    return (
-      <ContextPopupPage
-        sourceText={contextPromptSourceText}
-        onCancel={() => {
-          void cancelContextPrompt();
-        }}
-        onSubmit={(instructions) => {
-          void submitContextPrompt(instructions);
-        }}
-      />
-    );
-  }
-
-  if (view === 'fallback-result') {
-    return <FallbackResultPage />;
-  }
 
   function handleSettingChange<Key extends keyof TranslationClientSettings>(
     key: Key,
@@ -220,4 +234,93 @@ export default function App() {
       onSettingChange={handleSettingChange}
     />
   );
+}
+
+function ContextPopupRoute() {
+  const [routeState, setRouteState] = useState<ContextPromptRouteState>('loading');
+  const [session, setSession] = useState<PromptSession | null>(null);
+  const [isCancelling, setIsCancelling] = useState(false);
+
+  useEffect(() => {
+    let disposed = false;
+
+    const loadSession = async () => {
+      const nextSession = await getContextPromptSession().catch(() => null);
+
+      if (disposed) {
+        return;
+      }
+
+      setSession(nextSession);
+      setRouteState(nextSession === null ? 'missing-session' : 'loaded');
+    };
+
+    void loadSession();
+
+    return () => {
+      disposed = true;
+    };
+  }, []);
+
+  async function handleCancel() {
+    if (isCancelling) {
+      return;
+    }
+
+    setIsCancelling(true);
+
+    try {
+      await cancelContextPrompt();
+    } finally {
+      setIsCancelling(false);
+    }
+  }
+
+  if (routeState === 'loading') {
+    return (
+      <ContextPromptStatusPage
+        message="正在读取上下文会话，请稍候。"
+        onCancel={handleCancel}
+        isCancelling={isCancelling}
+      />
+    );
+  }
+
+  if (routeState === 'missing-session' || session === null) {
+    return (
+      <ContextPromptStatusPage
+        message="上下文会话不可用，无法提交提示。"
+        onCancel={handleCancel}
+        isCancelling={isCancelling}
+      />
+    );
+  }
+
+  return (
+    <ContextPopupPage
+      sourceText={session.sourceText}
+      onCancel={handleCancel}
+      onSubmit={(instructions) => {
+        void submitContextPrompt(instructions);
+      }}
+    />
+  );
+}
+
+function FallbackResultRoute() {
+  return <FallbackResultPage />;
+}
+
+export default function App() {
+  const view = new URLSearchParams(window.location.search).get('view');
+
+  if (view === 'context-popup') {
+    return <ContextPopupRoute />;
+  }
+
+  if (view === 'fallback-result') {
+    return <FallbackResultRoute />;
+  }
+
+  return <SettingsRoute />;
 }

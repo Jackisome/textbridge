@@ -27,6 +27,89 @@ describe('App settings persistence', () => {
     window.textBridgeContracts = undefined;
   });
 
+  it('does not bootstrap settings while the context popup session is loading', async () => {
+    const getContextPromptSession = vi.fn().mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          window.setTimeout(() => {
+            resolve({
+              sourceText: 'Real prompt session source text',
+              anchor: { kind: 'cursor' }
+            });
+          }, 50);
+        })
+    );
+    const getSettings = vi.fn().mockResolvedValue(createSettings());
+    const getRuntimeStatus = vi.fn().mockResolvedValue({
+      ready: true,
+      platform: 'win32',
+      activeProvider: 'mock',
+      registeredShortcuts: [],
+      helperState: 'idle',
+      helperLastErrorCode: null,
+      helperPid: null,
+      lastExecution: null,
+      recentExecutions: []
+    });
+
+    window.history.pushState({}, '', '/?view=context-popup');
+    window.textBridge = {
+      getSettings,
+      saveSettings: vi.fn().mockResolvedValue(createSettings()),
+      getRuntimeStatus,
+      getContextPromptSession,
+      submitContextPrompt: vi.fn().mockResolvedValue(undefined),
+      cancelContextPrompt: vi.fn().mockResolvedValue(undefined)
+    };
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(getContextPromptSession).toHaveBeenCalledTimes(1);
+    });
+
+    expect(getSettings).not.toHaveBeenCalled();
+    expect(getRuntimeStatus).not.toHaveBeenCalled();
+    expect(screen.getByText('正在读取上下文会话，请稍候。')).not.toBeNull();
+    expect(screen.queryByRole('textbox')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Translate' })).toBeNull();
+  });
+
+  it('shows a non-submittable state when the prompt session is missing', async () => {
+    const getContextPromptSession = vi.fn().mockResolvedValue(null);
+
+    window.history.pushState({}, '', '/?view=context-popup');
+    window.textBridge = {
+      getSettings: vi.fn().mockResolvedValue(createSettings()),
+      saveSettings: vi.fn().mockResolvedValue(createSettings()),
+      getRuntimeStatus: vi.fn().mockResolvedValue({
+        ready: true,
+        platform: 'win32',
+        activeProvider: 'mock',
+        registeredShortcuts: [],
+        helperState: 'idle',
+        helperLastErrorCode: null,
+        helperPid: null,
+        lastExecution: null,
+        recentExecutions: []
+      }),
+      getContextPromptSession,
+      submitContextPrompt: vi.fn().mockResolvedValue(undefined),
+      cancelContextPrompt: vi.fn().mockResolvedValue(undefined)
+    };
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(getContextPromptSession).toHaveBeenCalledTimes(1);
+    });
+
+    expect(screen.getByText('上下文会话不可用，无法提交提示。')).not.toBeNull();
+    expect(screen.queryByRole('textbox')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Translate' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Cancel' })).not.toBeNull();
+  });
+
   it('routes the context popup through the prompt session api', async () => {
     const getContextPromptSession = vi.fn().mockResolvedValue({
       sourceText: 'Real prompt session source text',
@@ -72,6 +155,37 @@ describe('App settings persistence', () => {
 
     expect(await screen.findByText('Real prompt session source text')).not.toBeNull();
     expect(screen.queryByText('Stale draft request text')).toBeNull();
+  });
+
+  it('does not bootstrap settings for the fallback result route', async () => {
+    const getSettings = vi.fn().mockResolvedValue(createSettings());
+    const getRuntimeStatus = vi.fn().mockResolvedValue({
+      ready: true,
+      platform: 'win32',
+      activeProvider: 'mock',
+      registeredShortcuts: [],
+      helperState: 'idle',
+      helperLastErrorCode: null,
+      helperPid: null,
+      lastExecution: null,
+      recentExecutions: []
+    });
+
+    window.history.pushState({}, '', '/?view=fallback-result');
+    window.textBridge = {
+      getSettings,
+      saveSettings: vi.fn().mockResolvedValue(createSettings()),
+      getRuntimeStatus,
+      getContextPromptSession: vi.fn().mockResolvedValue(null),
+      submitContextPrompt: vi.fn().mockResolvedValue(undefined),
+      cancelContextPrompt: vi.fn().mockResolvedValue(undefined)
+    };
+
+    render(<App />);
+
+    expect(screen.getByText('Result Ready for Manual Insert')).not.toBeNull();
+    expect(getSettings).not.toHaveBeenCalled();
+    expect(getRuntimeStatus).not.toHaveBeenCalled();
   });
 
   it('loads settings through the preload api on startup', async () => {

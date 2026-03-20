@@ -100,4 +100,27 @@ describe('ContextPopupPage', () => {
 
     expect(onSubmit).toHaveBeenCalledWith('Line 1\nLine 2');
   });
+
+  it('cancels the prompt with Escape', async () => {
+    const onSubmit = vi.fn();
+    const onCancel = vi.fn();
+
+    render(
+      <ContextPopupPage
+        sourceText="Original source text"
+        onSubmit={onSubmit}
+        onCancel={onCancel}
+      />
+    );
+
+    expect(screen.getByText('Original source text')).not.toBeNull();
+
+    const textarea = screen.getByLabelText('Instructions');
+    fireEvent.keyDown(textarea, { key: 'Escape' });
+
+    await waitFor(() => {
+      expect(onCancel).toHaveBeenCalledTimes(1);
+      expect(onSubmit).not.toHaveBeenCalled();
+    });
+  });
 });
