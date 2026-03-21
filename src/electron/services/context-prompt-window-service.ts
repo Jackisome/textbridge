@@ -1,7 +1,8 @@
-import { BrowserWindow, type BrowserWindowConstructorOptions } from 'electron';
+import { BrowserWindow, screen, type BrowserWindowConstructorOptions } from 'electron';
 import { pathToFileURL } from 'node:url';
 
 import type { PromptAnchor } from '../../shared/types/context-prompt';
+import { resolveContextPromptWindowBounds, type Rectangle } from './context-prompt-window-placement';
 
 export interface ContextPromptWindowOpenOptions {
   anchor: PromptAnchor;
@@ -20,16 +21,30 @@ export interface CreateContextPromptWindowServiceOptions {
   preloadPath: string;
   rendererDevUrl?: string;
   rendererProdHtml?: string;
+  getCursorScreenPoint?: () => { x: number; y: number };
+  getDisplayNearestPoint?: (point: { x: number; y: number }) => { workArea: Rectangle };
+}
+
+function defaultGetCursorScreenPoint(): { x: number; y: number } {
+  return screen.getCursorScreenPoint();
+}
+
+function defaultGetDisplayNearestPoint(point: { x: number; y: number }): { workArea: Rectangle } {
+  const display = screen.getDisplayNearestPoint(point);
+  return { workArea: display.workArea as Rectangle };
 }
 
 function createContextPromptWindowOptions(
-  preloadPath: string
+  preloadPath: string,
+  bounds?: { x: number; y: number; width: number; height: number }
 ): BrowserWindowConstructorOptions {
   return {
-    width: 480,
-    height: 360,
+    width: bounds?.width ?? 480,
+    height: bounds?.height ?? 360,
     minWidth: 420,
     minHeight: 280,
+    x: bounds?.x,
+    y: bounds?.y,
     resizable: false,
     skipTaskbar: true,
     autoHideMenuBar: true,
@@ -70,7 +85,9 @@ export function createContextPromptWindowService({
   browserWindowFactory = (options) => new BrowserWindow(options),
   preloadPath,
   rendererDevUrl,
-  rendererProdHtml
+  rendererProdHtml,
+  getCursorScreenPoint = defaultGetCursorScreenPoint,
+  getDisplayNearestPoint = defaultGetDisplayNearestPoint
 }: CreateContextPromptWindowServiceOptions): ContextPromptWindowService {
   let activeWindow: BrowserWindow | null = null;
 
@@ -85,7 +102,17 @@ export function createContextPromptWindowService({
       return activeWindow;
     }
 
-    activeWindow = browserWindowFactory(createContextPromptWindowOptions(preloadPath));
+    const cursorPoint = getCursorScreenPoint();
+    const { workArea } = getDisplayNearestPoint(cursorPoint);
+
+    const bounds = resolveContextPromptWindowBounds({
+      anchor: options.anchor,
+      popupSize: { width: 480, height: 360 },
+      workArea,
+      cursorPoint
+    });
+
+    activeWindow = browserWindowFactory(createContextPromptWindowOptions(preloadPath, bounds));
     activeWindow.on('closed', () => {
       activeWindow = null;
     });
