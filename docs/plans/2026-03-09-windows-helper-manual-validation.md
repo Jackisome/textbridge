@@ -22,6 +22,7 @@
   - 主窗口焦点回归（`b588805`）
   - 锚点感知窗口定位（`2edddbd`）
   - Clipboard 降级保留元数据（`e7aaa80`）和 Omnibox 复合 restore token + 控制 refocus（`7a5b0fd`）
+- `2026-03-21` Windows 记事本 `context-translation`：在补齐 selection-context 自动写回能力归一化后，已再次人工验证 prompt 提交后可恢复目标并自动回写
 - Chromium 地址栏样本仍为 fallback-only，不在自动回写承诺范围
 - 当前下一轮优先目标：`系统设置搜索框`、`WPF TextBox`、`Win32 RichEdit20W/50W`
 
@@ -244,6 +245,7 @@ npm run dev
 - **已修复 - 锚点定位**: `context-prompt-window-service` 现在真正消费 `PromptAnchor`，基于 `selection-rect` / `control-rect` / `cursor` 实现窗口定位，而不是默认居中（commit `2edddbd`）
 - **已修复 - 剪贴板元数据**: `clipboard` 降级路径现在返回 `cursor` 或 `window-rect` 锚点而非 `unknown`，并包含 `restoreTarget` token（commit `e7aaa80`）
 - **已修复 - Omnibox 恢复**: `RestoreTarget` 现在解析复合 restore token（含 runtimeId / className 提示），并尝试通过 UI Automation 重新聚焦原始控件，报告 `controlRefocused` 和 `refocusMethod`（commit `7a5b0fd`）
+- **已修复 - 标准控件 prompt 后自动回写能力位**: Win32 helper 现在会对可恢复、非 fallback-only 的 `uia` 目标正确提升 `canAutoWriteBackAfterPrompt`，避免像记事本这类标准控件在 `restore-target` 之后被过早短路到 `clipboard-write`
 
 ### Chromium Omnibox 分类说明
 
@@ -251,6 +253,7 @@ npm run dev
 - 修复后，helper 现在会报告 `anchorKind=cursor` 或 `window-rect`（而非 `unknown`），且包含有效的 `restoreTarget` token
 - Omnibox 的 control refocus 在某些 Chromium 版本中可能因渲染进程隔离而不可靠，最终行为仍可能退化为剪贴板 / popup fallback
 - 不要把 Chromium `<textarea>` 的成功外推到 omnibox
+- `2026-03-21` 最新复测结论：Windows 记事本 `context-translation` 已恢复自动回写，但 Chrome 地址栏在 `capture-selection-context -> restore-target` 之后仍停在 fallback-only，日志只看到 `clipboard-write`，没有进入 `write-text`
 
 ### Recorded Follow-Up Actions
 
@@ -258,7 +261,10 @@ npm run dev
 - [x] `context-translation`：实现基于 PromptAnchor 的窗口定位
 - [x] `clipboard` 降级：保留锚点和 restoreTarget 元数据
 - [x] Omnibox restore：复合 token + UI Automation 重新聚焦
+- [x] 标准 Win32 控件：修正 selection-context 自动写回能力位的过严判定，确认记事本 `context-translation` 可再次进入自动写回路径
 - [ ] `context-translation` + Chromium 地址栏：进一步提升捕获稳定性，优先在地址栏编辑态拿到 Edit 控件的锚点与 restoreTarget
+- [ ] Chromium 地址栏：补充 `restore-target` 之后的 focused element / selection diagnostics，确认为什么 UIA 仍把目标切回 `ListItem` 或保守降级
+- [ ] Chromium 地址栏：验证 `controlRefocused` / `refocusMethod` 与随后 `write-text` 可验证性之间的关系，确认是 refocus 不充分还是 selection 在 prompt 关闭后已丢失
 - [ ] fallback-only 透明化：当明确 `canRestoreTargetAfterPrompt=false` 或 `canAutoWriteBackAfterPrompt=false` 时，UI/日志应更清楚地提示”本次只支持 fallback，不承诺自动替换”
 
 ## Recording Rules
@@ -278,5 +284,5 @@ npm run dev
 ## Known Gap
 
 - `context` 快捷键已接入独立 prompt 浮窗、IPC 与主流程编排，锚点定位已完成（commit `2edddbd`）
-- Chromium 地址栏 / omnibox 在当前样本里仍只能走 `clipboard` 降级（commit `e7aaa80` 改善了元数据），尚未进入”prompt 后恢复原目标并自动写回”的承诺范围，但 restore token 和控制 refocus 已升级（commit `7a5b0fd`）
+- Windows 记事本 `context-translation` 已在最新复测中恢复自动回写；但 Chromium 地址栏 / omnibox 在当前样本里仍只能走 `clipboard` 降级，尚未进入”prompt 后恢复原目标并自动写回”的承诺范围；当前待确认点集中在 restore 后控件 refocus 与选区稳定性
 - `quick-translation` 和 `context-translation` 的主窗口焦点回归问题已修复（commit `b588805`）

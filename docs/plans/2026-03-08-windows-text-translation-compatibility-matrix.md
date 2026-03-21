@@ -94,6 +94,7 @@
 
 - `2026-03-18` Chromium `<textarea>`：主日志确认 `capture-text` 成功后，`write-text(method=replace-selection)` 直接成功，`selectionMatchedExpected=true`、`targetStable=true`、`valueChanged=true`、`translatedTextDetected=true`
 - `2026-03-19` Windows 记事本：两次独立触发均直接走 `replace-selection` 成功，说明当前 helper 已覆盖标准 Win32 文本编辑目标，不再只依赖 Chrome 观察样本
+- `2026-03-21` Windows 记事本 `context-translation`：最新人工复测已确认 `capture-selection-context -> restore-target -> write-text` 闭环重新打通；根因是 selection-context 自动写回能力位的判定曾过严，修正后标准 Win32 控件可再次进入自动写回路径
 - `2026-03-21` Chromium 地址栏 / omnibox + `context-translation`：仅观察到 `capture-selection-context` 通过 `clipboard` 降级成功，但修复后返回 `anchorKind=cursor`/`window-rect`（而非 `unknown`）且包含有效的 `restoreTarget` token；restore 逻辑已升级为支持复合 token 和 UI Automation 控制 refocus，仍为 fallback-only 样本，不能计为 `Pass`
 - 当前下一轮优先验证目标：`系统设置搜索框`、`WPF TextBox`、`Win32 RichEdit20W/50W`
 
@@ -109,7 +110,7 @@
 - **进程隔离**: Chromium 的渲染进程是独立的，UIA 从外部只能看到 `Chrome_WidgetWin_1` 窗口，无法穿透到 DOM 层
 - **ContentEditable**: 富文本编辑器通常使用 contenteditable div，选区存在于 DOM 中，UIA 无法获取
 - **Textarea 观察样本已通过**: Chrome `<textarea>` 已观察到 `UIA TextPattern + replace-selection` 成功，不应再把所有 Chromium 输入框一概视为“只能 Clipboard”
-- **地址栏 / Omnibox 需单独看待**: Chrome 地址栏在当前 `context-translation` 样本里没有拿到可恢复的选择上下文，`capture-selection-context` 会退化成 `clipboard` 路径；修复后（2026-03-21）clipboard 降级现在返回 `anchorKind=cursor`/`window-rect` 且包含有效的 restore token，但 control refocus 在 Chromium 渲染进程隔离下仍可能不可靠；omnibox 不要和 `<textarea>` 的成功表现混为一谈
+- **地址栏 / Omnibox 需单独看待**: Chrome 地址栏在当前 `context-translation` 样本里虽然已经能返回有效 `restoreTarget`，但最新复测仍停在 `restore-target -> clipboard-write`，没有稳定进入 `write-text`；下次排查应聚焦 restore 后的 focused element/selection diagnostics、`controlRefocused` 与后续写回可验证性的关系，而不是把 `<textarea>` 的成功外推到 omnibox
 - **复杂 DOM 仍优先 Clipboard**: `contenteditable`、复杂聊天输入框和 Electron 渲染层输入控件依旧优先按 Clipboard 路径评估，不把 `<textarea>` 的成功外推到整类目标
 
 ### Java Swing
@@ -188,6 +189,7 @@ Notes:
 - 降级到模拟复制/粘贴时，首版不恢复原剪贴板
 - `context` 快捷键已具备独立 prompt 浮窗，锚点定位已实现（2026-03-21 fix commit `2edddbd`），弹窗位置现在基于 `selection-rect` / `control-rect` / `cursor` 计算
 - Chromium 地址栏 / omnibox 当前未进入 `context-translation` 的自动回写承诺范围，仍为 fallback-only 样本；但 clipboard 降级路径现在返回 `anchorKind=cursor` 或 `window-rect`（而非 `unknown`），且包含有效的 `restoreTarget` token；restore 已升级为复合 token + UI Automation 控制 refocus（2026-03-21 fix commit `7a5b0fd`）
+- `2026-03-21` 最新人工复测已确认：Windows 记事本 `context-translation` 可重新自动回写；Chrome 地址栏仍只到 fallback-only，尚未证明 prompt 关闭后原始地址栏控件与选区能被稳定恢复并通过写回校验
 - **新增**: Clipboard 路径不会尝试检测 IME 组合状态，组合中的文本可能丢失
 - **新增**: 密码框/安全字段当前不会主动检测和跳过，存在理论风险
 - **新增**: 多行文本校验已做换行归一化，但这只保证 helper 的安全校验不过度误杀，不代表所有富文本/自绘控件都进入承诺范围

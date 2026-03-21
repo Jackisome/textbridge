@@ -91,7 +91,8 @@ public sealed class CaptureSelectionContextService
                 new JsonObject());
         }
 
-        return await Task.FromResult(_automationFacade.CaptureSelectionContext());
+        return await Task.FromResult(
+            NormalizeUiAutomationCaptureResult(_automationFacade.CaptureSelectionContext()));
     }
 
     private static PromptAnchorSnapshot DeriveAnchorFromMetadata(PromptMetadataSnapshot metadata)
@@ -115,6 +116,78 @@ public sealed class CaptureSelectionContextService
 
         return new PromptAnchorSnapshot("unknown");
     }
+
+    private static SelectionContextCaptureResult NormalizeUiAutomationCaptureResult(
+        SelectionContextCaptureResult result)
+    {
+        if (!result.Ok ||
+            !string.Equals(result.Method, "uia", StringComparison.OrdinalIgnoreCase))
+        {
+            return result;
+        }
+
+        var canAutoWriteBackAfterPrompt =
+            result.Capabilities.CanAutoWriteBackAfterPrompt ||
+            ShouldAllowAutoWriteBackAfterPrompt(result);
+
+        if (canAutoWriteBackAfterPrompt == result.Capabilities.CanAutoWriteBackAfterPrompt)
+        {
+            return result;
+        }
+
+        return SelectionContextCaptureResult.Success(
+            result.Method,
+            result.Text ?? string.Empty,
+            result.Anchor,
+            result.RestoreTargetToken,
+            result.Capabilities with
+            {
+                CanAutoWriteBackAfterPrompt = canAutoWriteBackAfterPrompt
+            },
+            result.Diagnostics);
+    }
+
+    private static bool ShouldAllowAutoWriteBackAfterPrompt(
+        SelectionContextCaptureResult result)
+    {
+        if (!result.Capabilities.CanRestoreTargetAfterPrompt ||
+            string.IsNullOrWhiteSpace(result.RestoreTargetToken))
+        {
+            return false;
+        }
+
+        if (result.Anchor.Kind is not "selection-rect" and not "control-rect")
+        {
+            return false;
+        }
+
+        return !IsKnownFallbackOnlyPromptTarget(result.Diagnostics);
+    }
+
+    private static bool IsKnownFallbackOnlyPromptTarget(JsonObject diagnostics)
+    {
+        var elementClassName = GetString(diagnostics, "elementClassName");
+        if (string.Equals(elementClassName, "OmniboxViewViews", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        var automationId = GetString(diagnostics, "automationId");
+        return string.Equals(automationId, "view_1012", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? GetString(JsonObject diagnostics, string key)
+    {
+        try
+        {
+            return diagnostics[key]?.GetValue<string>();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
 }
 
 public sealed record SelectionContextCaptureResult(

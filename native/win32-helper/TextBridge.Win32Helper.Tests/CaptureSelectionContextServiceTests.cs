@@ -8,7 +8,7 @@ namespace TextBridge.Win32Helper.Tests;
 public sealed class CaptureSelectionContextServiceTests
 {
     [Fact]
-    public async Task CaptureSelectionContext_ReturnsControlRectAndConservativeCapabilitiesForCurrentRealPath()
+    public async Task CaptureSelectionContext_PromotesAutoWriteBackForEditableControlRectTargets()
     {
         var automation = new FakeSelectionContextAutomationFacade
         {
@@ -16,7 +16,6 @@ public sealed class CaptureSelectionContextServiceTests
                 "uia",
                 "world",
                 new PromptAnchorSnapshot(
-                    // Current real helper path does not yet emit true selection-rect bounds.
                     "control-rect",
                     10,
                     10,
@@ -31,7 +30,10 @@ public sealed class CaptureSelectionContextServiceTests
                 new JsonObject
                 {
                     ["processName"] = "notepad",
-                    ["windowClassName"] = "Edit"
+                    ["windowClassName"] = "Edit",
+                    ["framework"] = "Win32",
+                    ["elementClassName"] = "Edit",
+                    ["editable"] = true
                 })
         };
         var service = new CaptureSelectionContextService(automation);
@@ -48,7 +50,44 @@ public sealed class CaptureSelectionContextServiceTests
         Assert.Equal("hwnd:123", result.RestoreTargetToken);
         Assert.True(result.Capabilities.CanPositionPromptNearSelection);
         Assert.True(result.Capabilities.CanRestoreTargetAfterPrompt);
-        Assert.False(result.Capabilities.CanAutoWriteBackAfterPrompt);
+        Assert.True(result.Capabilities.CanAutoWriteBackAfterPrompt);
+    }
+
+    [Fact]
+    public async Task CaptureSelectionContext_PromotesAutoWriteBackForRestoreableUiATargetsWithoutEditableDiagnostic()
+    {
+        var automation = new FakeSelectionContextAutomationFacade
+        {
+            Result = SelectionContextCaptureResult.Success(
+                "uia",
+                "world",
+                new PromptAnchorSnapshot(
+                    "control-rect",
+                    10,
+                    10,
+                    40,
+                    20,
+                    "display-1"),
+                "hwnd:123",
+                new SelectionContextCapabilitiesSnapshot(
+                    CanPositionPromptNearSelection: true,
+                    CanRestoreTargetAfterPrompt: true,
+                    CanAutoWriteBackAfterPrompt: false),
+                new JsonObject
+                {
+                    ["processName"] = "notepad",
+                    ["windowClassName"] = "Notepad",
+                    ["framework"] = "Win32",
+                    ["controlType"] = "ControlType.Document",
+                    ["elementClassName"] = "RichEditD2DPT"
+                })
+        };
+        var service = new CaptureSelectionContextService(automation);
+
+        var result = await service.CaptureAsync("uia");
+
+        Assert.True(result.Ok);
+        Assert.True(result.Capabilities.CanAutoWriteBackAfterPrompt);
     }
 
     [Fact]
@@ -90,7 +129,7 @@ public sealed class CaptureSelectionContextServiceTests
     }
 
     [Fact]
-    public async Task CaptureSelectionContext_PreservesControlRectAndConservativeCapabilities()
+    public async Task CaptureSelectionContext_KeepsOmniboxTargetsAsFallbackOnly()
     {
         var automation = new FakeSelectionContextAutomationFacade
         {
@@ -108,7 +147,15 @@ public sealed class CaptureSelectionContextServiceTests
                     CanPositionPromptNearSelection: true,
                     CanRestoreTargetAfterPrompt: true,
                     CanAutoWriteBackAfterPrompt: false),
-                new JsonObject())
+                new JsonObject
+                {
+                    ["processName"] = "chrome",
+                    ["windowClassName"] = "Chrome_WidgetWin_1",
+                    ["framework"] = "Chrome",
+                    ["elementClassName"] = "OmniboxViewViews",
+                    ["automationId"] = "view_1012",
+                    ["editable"] = true
+                })
         };
         var service = new CaptureSelectionContextService(automation);
 
@@ -220,7 +267,14 @@ public sealed class CaptureSelectionContextServiceTests
                             CanPositionPromptNearSelection: true,
                             CanRestoreTargetAfterPrompt: true,
                             CanAutoWriteBackAfterPrompt: false),
-                        new JsonObject())
+                        new JsonObject
+                        {
+                            ["processName"] = "notepad",
+                            ["windowClassName"] = "Edit",
+                            ["framework"] = "Win32",
+                            ["elementClassName"] = "Edit",
+                            ["editable"] = true
+                        })
                 }));
 
         await host.RunAsync();
@@ -231,7 +285,7 @@ public sealed class CaptureSelectionContextServiceTests
         Assert.Contains("\"ok\":true", json);
         Assert.Contains("\"text\":\"world\"", json);
         Assert.Contains("\"kind\":\"control-rect\"", json);
-        Assert.Contains("\"canAutoWriteBackAfterPrompt\":false", json);
+        Assert.Contains("\"canAutoWriteBackAfterPrompt\":true", json);
     }
 }
 
