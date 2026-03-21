@@ -1,6 +1,7 @@
 import type { BrowserWindow } from 'electron';
 
 import type {
+  PromptAnchor,
   PromptSession,
   PromptSessionResult
 } from '../../shared/types/context-prompt';
@@ -10,7 +11,10 @@ import type {
 import type { ContextPromptWindowService } from './context-prompt-window-service';
 
 export interface ContextPromptRequestService {
-  requestContextInstructions(sourceText: string): Promise<string | null>;
+  requestContextInstructions(
+    sourceText: string,
+    anchor?: PromptAnchor
+  ): Promise<string | null>;
 }
 
 export interface CreateContextPromptRequestServiceOptions {
@@ -27,7 +31,10 @@ export function createContextPromptRequestService({
   let activeRequest: Promise<string | null> | null = null;
 
   return {
-    async requestContextInstructions(sourceText: string): Promise<string | null> {
+    async requestContextInstructions(
+      sourceText: string,
+      anchor?: PromptAnchor
+    ): Promise<string | null> {
       const activeSession = promptSessionService.getActive();
 
       if (activeSession && activeRequest) {
@@ -42,7 +49,7 @@ export function createContextPromptRequestService({
 
       const session: PromptSession = {
         sourceText,
-        anchor: { kind: 'unknown' }
+        anchor: anchor ?? { kind: 'unknown' }
       };
 
       const sessionResultPromise = promptSessionService.open(session);

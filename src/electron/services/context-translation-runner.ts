@@ -1,6 +1,7 @@
 import { executeContextTranslation } from '../../core/use-cases/execute-context-translation';
 import type { ExecutionReport } from '../../core/entities/execution-report';
 import type { TranslationResult } from '../../core/entities/translation';
+import type { RestoreTarget, SelectionContextCapture } from '../../shared/types/context-prompt';
 import type { OutputMode, TranslationClientSettings } from '../../shared/types/settings';
 import type { ExecutionReportContext } from './execution-report-service';
 import type { PopupService } from './popup-service';
@@ -14,10 +15,15 @@ export interface ContextTranslationSettingsService {
 }
 
 export interface ContextTranslationSystemInteractionService {
-  captureSelectedText(settings?: TranslationClientSettings): Promise<{
+  captureSelectionContext(settings?: TranslationClientSettings): Promise<{
     success: boolean;
-    method: ExecutionReport['captureMethod'];
-    text?: string;
+    data?: SelectionContextCapture;
+    errorCode?: string;
+    errorMessage?: string;
+  }>;
+  restoreSelectionTarget(target: RestoreTarget): Promise<{
+    success: boolean;
+    restored: boolean;
     errorCode?: string;
     errorMessage?: string;
   }>;
@@ -72,17 +78,19 @@ export function createContextTranslationRunner({
     async run(): Promise<ExecutionReport> {
       const settings = await settingsService.getSettings();
       const startedAt = now();
-      const captureResult = await systemInteractionService.captureSelectedText(settings);
-      const sourceText = captureResult.text ?? '';
+      const reportId = createReportId();
+      const captureResult = await systemInteractionService.captureSelectionContext(settings);
+      const selectionContext = captureResult.data;
+      const sourceText = selectionContext?.sourceText ?? '';
 
-      if (!captureResult.success) {
+      if (!captureResult.success || !selectionContext) {
         const report: ExecutionReport = {
-          id: createReportId(),
+          id: reportId,
           workflow: 'context-translation',
           status: 'failed',
           startedAt,
           completedAt: now(),
-          captureMethod: captureResult.method,
+          captureMethod: selectionContext?.captureMethod,
           sourceTextLength: 0,
           translatedTextLength: 0,
           errorCode: captureResult.errorCode,
@@ -93,16 +101,19 @@ export function createContextTranslationRunner({
         return report;
       }
 
-      const instructions = await popupService.requestContextInstructions(sourceText);
+      const instructions = await popupService.requestContextInstructions(
+        sourceText,
+        selectionContext.anchor
+      );
 
       if (instructions === null) {
         const report: ExecutionReport = {
-          id: createReportId(),
+          id: reportId,
           workflow: 'context-translation',
           status: 'cancelled',
           startedAt,
           completedAt: now(),
-          captureMethod: captureResult.method,
+          captureMethod: selectionContext.captureMethod,
           sourceTextLength: sourceText.length,
           translatedTextLength: 0,
           errorCode: 'CONTEXT_INPUT_CANCELLED',
@@ -123,12 +134,12 @@ export function createContextTranslationRunner({
 
       if (!translationRequestResult.success) {
         const report: ExecutionReport = {
-          id: createReportId(),
+          id: reportId,
           workflow: 'context-translation',
           status: 'failed',
           startedAt,
           completedAt: now(),
-          captureMethod: captureResult.method,
+          captureMethod: selectionContext.captureMethod,
           sourceTextLength: sourceText.length,
           translatedTextLength: 0,
           errorCode: translationRequestResult.error.code,
@@ -145,6 +156,29 @@ export function createContextTranslationRunner({
         settings,
         translationRequestResult.request
       );
+
+      const restoreDecision = await resolveRestoreDecision({
+        selectionContext,
+        systemInteractionService
+      });
+
+      if (!restoreDecision.canWriteBack) {
+        return presentPopupFallback({
+          captureMethod: selectionContext.captureMethod,
+          errorCode: restoreDecision.errorCode,
+          errorMessage: restoreDecision.errorMessage,
+          now,
+          popupService,
+          provider: translationResult.provider,
+          reportId,
+          reportRecorder,
+          sourceText,
+          startedAt,
+          systemInteractionService,
+          translatedText: translationResult.translatedText
+        });
+      }
+
       const writeBackResult = await systemInteractionService.writeTranslatedText(
         translationResult.translatedText,
         settings,
@@ -152,13 +186,13 @@ export function createContextTranslationRunner({
       );
 
       const baseReport: ExecutionReport = {
-        id: createReportId(),
+        id: reportId,
         workflow: 'context-translation',
         status: writeBackResult.success ? 'completed' : 'failed',
         startedAt,
         completedAt: now(),
         provider: translationResult.provider,
-        captureMethod: captureResult.method,
+        captureMethod: selectionContext.captureMethod,
         writeBackMethod: writeBackResult.method,
         sourceTextLength: sourceText.length,
         translatedTextLength: translationResult.translatedText.length
@@ -173,25 +207,20 @@ export function createContextTranslationRunner({
       }
 
       if (writeBackResult.method === 'popup-fallback') {
-        const fallbackReport: ExecutionReport = {
-          ...baseReport,
-          status: 'fallback-required',
+        return presentPopupFallback({
+          captureMethod: selectionContext.captureMethod,
           errorCode: writeBackResult.errorCode,
-          errorMessage: writeBackResult.errorMessage
-        };
-
-        await systemInteractionService.copyToClipboard(translationResult.translatedText);
-        await popupService.showFallbackResult({
-          translatedText: translationResult.translatedText,
+          errorMessage: writeBackResult.errorMessage,
+          now,
+          popupService,
+          provider: translationResult.provider,
+          reportId,
+          reportRecorder,
           sourceText,
-          report: fallbackReport
-        });
-
-        reportRecorder?.record(fallbackReport, {
-          sourceText,
+          startedAt,
+          systemInteractionService,
           translatedText: translationResult.translatedText
         });
-        return fallbackReport;
       }
 
       const report: ExecutionReport = {
@@ -207,4 +236,113 @@ export function createContextTranslationRunner({
       return report;
     }
   };
+}
+
+async function resolveRestoreDecision({
+  selectionContext,
+  systemInteractionService
+}: {
+  selectionContext: SelectionContextCapture;
+  systemInteractionService: ContextTranslationSystemInteractionService;
+}): Promise<
+  | { canWriteBack: true }
+  | { canWriteBack: false; errorCode: string; errorMessage: string }
+> {
+  if (
+    selectionContext.restoreTarget === null ||
+    !selectionContext.capabilities.canRestoreTargetAfterPrompt
+  ) {
+    return {
+      canWriteBack: false,
+      errorCode: 'RESTORE_TARGET_UNSUPPORTED',
+      errorMessage:
+        'The captured target cannot be safely restored after prompt submission.'
+    };
+  }
+
+  const restoreResult = await systemInteractionService.restoreSelectionTarget(
+    selectionContext.restoreTarget
+  );
+
+  if (!restoreResult.success || !restoreResult.restored) {
+    return {
+      canWriteBack: false,
+      errorCode: restoreResult.errorCode ?? 'RESTORE_TARGET_FAILED',
+      errorMessage:
+        restoreResult.errorMessage ??
+        'Failed to restore the original selection target.'
+    };
+  }
+
+  if (!selectionContext.capabilities.canAutoWriteBackAfterPrompt) {
+    return {
+      canWriteBack: false,
+      errorCode: 'WRITE_BACK_UNSUPPORTED',
+      errorMessage:
+        'Automatic write-back after prompt is not supported for the captured target.'
+    };
+  }
+
+  return {
+    canWriteBack: true
+  };
+}
+
+async function presentPopupFallback({
+  captureMethod,
+  errorCode,
+  errorMessage,
+  now,
+  popupService,
+  provider,
+  reportId,
+  reportRecorder,
+  sourceText,
+  startedAt,
+  systemInteractionService,
+  translatedText
+}: {
+  captureMethod: ExecutionReport['captureMethod'];
+  errorCode?: string;
+  errorMessage?: string;
+  now: () => string;
+  popupService: PopupService;
+  provider: string;
+  reportId: string;
+  reportRecorder?: {
+    record(report: ExecutionReport, context?: ExecutionReportContext): void;
+  };
+  sourceText: string;
+  startedAt: string;
+  systemInteractionService: ContextTranslationSystemInteractionService;
+  translatedText: string;
+}): Promise<ExecutionReport> {
+  const fallbackReport: ExecutionReport = {
+    id: reportId,
+    workflow: 'context-translation',
+    status: 'fallback-required',
+    startedAt,
+    completedAt: now(),
+    provider,
+    captureMethod,
+    writeBackMethod: 'popup-fallback',
+    sourceTextLength: sourceText.length,
+    translatedTextLength: translatedText.length,
+    errorCode,
+    errorMessage
+  };
+
+  await systemInteractionService.copyToClipboard(translatedText);
+  await popupService.showFallbackResult({
+    translatedText,
+    sourceText,
+    report: fallbackReport
+  });
+
+  reportRecorder?.record(fallbackReport, {
+    sourceText,
+    translatedText
+  });
+
+  return fallbackReport;
 }

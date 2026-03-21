@@ -27,6 +27,15 @@ describe('createContextPromptRequestService', () => {
   it('opens a session and returns submitted instructions', async () => {
     const promptSessionService = createContextPromptSessionService();
     const promptWindow = createPromptWindowHandle();
+    const anchor = {
+      kind: 'control-rect' as const,
+      bounds: {
+        x: 24,
+        y: 32,
+        width: 240,
+        height: 48
+      }
+    };
     const promptWindowService = {
       open: vi.fn().mockResolvedValue(promptWindow.handle),
       close: vi.fn(),
@@ -37,11 +46,11 @@ describe('createContextPromptRequestService', () => {
       promptWindowService
     });
 
-    const pending = requestService.requestContextInstructions('Hello world');
+    const pending = requestService.requestContextInstructions('Hello world', anchor);
 
     expect(promptSessionService.getActive()).toEqual({
       sourceText: 'Hello world',
-      anchor: { kind: 'unknown' }
+      anchor
     });
     expect(promptWindowService.open).toHaveBeenCalledTimes(1);
 

@@ -116,8 +116,8 @@ void app.whenReady().then(async () => {
     registry: createDefaultProviderRegistry()
   });
   const popupService = createPopupService({
-    requestContextInstructions: (sourceText) =>
-      contextPromptRequestService.requestContextInstructions(sourceText),
+    requestContextInstructions: (sourceText, anchor) =>
+      contextPromptRequestService.requestContextInstructions(sourceText, anchor),
     async showFallbackResult() {
       await windowService.showMainWindow();
     },

@@ -1,4 +1,5 @@
 import type { ExecutionReport } from '../../core/entities/execution-report';
+import type { PromptAnchor } from '../../shared/types/context-prompt';
 
 export interface PopupFallbackPayload {
   translatedText: string;
@@ -7,13 +8,19 @@ export interface PopupFallbackPayload {
 }
 
 export interface PopupService {
-  requestContextInstructions(sourceText: string): Promise<string | null>;
+  requestContextInstructions(
+    sourceText: string,
+    anchor?: PromptAnchor
+  ): Promise<string | null>;
   showFallbackResult(payload: PopupFallbackPayload): Promise<void>;
   showSettings(): Promise<void>;
 }
 
 export interface CreatePopupServiceOptions {
-  requestContextInstructions?: (sourceText: string) => Promise<string | null>;
+  requestContextInstructions?: (
+    sourceText: string,
+    anchor?: PromptAnchor
+  ) => Promise<string | null>;
   showFallbackResult?: (payload: PopupFallbackPayload) => Promise<void> | void;
   showSettings?: () => Promise<void> | void;
 }
@@ -24,8 +31,13 @@ export function createPopupService({
   showSettings
 }: CreatePopupServiceOptions = {}): PopupService {
   return {
-    requestContextInstructions(sourceText: string): Promise<string | null> {
-      return requestContextInstructions ? requestContextInstructions(sourceText) : Promise.resolve(null);
+    requestContextInstructions(
+      sourceText: string,
+      anchor?: PromptAnchor
+    ): Promise<string | null> {
+      return requestContextInstructions
+        ? requestContextInstructions(sourceText, anchor)
+        : Promise.resolve(null);
     },
     async showFallbackResult(payload: PopupFallbackPayload): Promise<void> {
       await showFallbackResult?.(payload);
