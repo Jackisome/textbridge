@@ -218,7 +218,6 @@ async function handleRunnerFailure(
       ? `${workflow} failed: ${error.message}`
       : `${workflow} failed with a non-error value.`
   );
-  await windowService.showMainWindow();
 }
 
 async function runTranslationWorkflow(

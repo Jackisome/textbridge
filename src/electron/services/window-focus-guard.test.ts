@@ -44,66 +44,58 @@ describe('releaseVisibleMainWindow', () => {
 });
 
 describe('runWithReleasedMainWindow', () => {
-  it('hides a visible main window before executing a global workflow', async () => {
-    const calls: string[] = [];
+  it('releases the main window then executes the workflow', async () => {
+    const hide = vi.fn();
+    const wait = vi.fn().mockResolvedValue(undefined);
+    const execute = vi.fn().mockResolvedValue('result');
 
-    await runWithReleasedMainWindow(
+    const result = await runWithReleasedMainWindow(
       {
         isDestroyed: () => false,
         isVisible: () => true,
-        hide: () => calls.push('hide')
+        hide
       },
-      async () => {
-        calls.push('execute');
-      },
-      async (ms) => {
-        calls.push(`wait:${ms}`);
-      },
+      execute,
+      wait,
       120
     );
 
-    expect(calls).toEqual(['hide', 'wait:120', 'execute']);
+    expect(result).toBe('result');
+    expect(hide).toHaveBeenCalledTimes(1);
+    expect(wait).toHaveBeenCalledWith(120);
+    expect(execute).toHaveBeenCalledTimes(1);
   });
 
-  it('does not hide when the main window is already hidden', async () => {
-    const calls: string[] = [];
+  it('executes the workflow even when the main window is null', async () => {
+    const execute = vi.fn().mockResolvedValue('result');
+
+    const result = await runWithReleasedMainWindow(
+      null,
+      execute,
+      vi.fn().mockResolvedValue(undefined)
+    );
+
+    expect(result).toBe('result');
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not hide when the main window is not visible', async () => {
+    const hide = vi.fn();
+    const wait = vi.fn().mockResolvedValue(undefined);
+    const execute = vi.fn().mockResolvedValue('result');
 
     await runWithReleasedMainWindow(
       {
         isDestroyed: () => false,
         isVisible: () => false,
-        hide: () => calls.push('hide')
+        hide
       },
-      async () => {
-        calls.push('execute');
-      },
-      async (ms) => {
-        calls.push(`wait:${ms}`);
-      },
-      120
+      execute,
+      wait
     );
 
-    expect(calls).toEqual(['execute']);
-  });
-
-  it('does not hide when the main window is destroyed', async () => {
-    const calls: string[] = [];
-
-    await runWithReleasedMainWindow(
-      {
-        isDestroyed: () => true,
-        isVisible: () => true,
-        hide: () => calls.push('hide')
-      },
-      async () => {
-        calls.push('execute');
-      },
-      async (ms) => {
-        calls.push(`wait:${ms}`);
-      },
-      120
-    );
-
-    expect(calls).toEqual(['execute']);
+    expect(hide).not.toHaveBeenCalled();
+    expect(wait).not.toHaveBeenCalled();
+    expect(execute).toHaveBeenCalledTimes(1);
   });
 });
