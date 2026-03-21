@@ -57,7 +57,8 @@ export function createShortcutService(
         void Promise.resolve(callback());
       })
     ) {
-      throw new Error(`Failed to register shortcut: ${accelerator}`);
+      console.warn(`[ShortcutService] Failed to register shortcut: ${accelerator}. It may already be in use by another application.`);
+      return;
     }
 
     registeredShortcuts.push(accelerator);

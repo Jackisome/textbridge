@@ -74,4 +74,22 @@ describe('createShortcutService', () => {
     expect(unregisterAll).toHaveBeenCalledTimes(1);
     expect(register).not.toHaveBeenCalled();
   });
+
+  it('does not throw when shortcut registration fails', () => {
+    const register = vi.fn().mockReturnValue(false);
+    const unregisterAll = vi.fn();
+    const onQuickTranslate = vi.fn();
+    const onContextTranslate = vi.fn();
+    const service = createShortcutService(
+      { register, unregisterAll },
+      { onQuickTranslate, onContextTranslate }
+    );
+
+    expect(() => {
+      service.applySettings(defaultTranslationClientSettings);
+    }).not.toThrow();
+
+    expect(unregisterAll).toHaveBeenCalledTimes(1);
+    expect(register).toHaveBeenCalledTimes(2);
+  });
 });
