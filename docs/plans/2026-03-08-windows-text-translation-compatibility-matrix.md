@@ -94,6 +94,7 @@
 
 - `2026-03-18` Chromium `<textarea>`：主日志确认 `capture-text` 成功后，`write-text(method=replace-selection)` 直接成功，`selectionMatchedExpected=true`、`targetStable=true`、`valueChanged=true`、`translatedTextDetected=true`
 - `2026-03-19` Windows 记事本：两次独立触发均直接走 `replace-selection` 成功，说明当前 helper 已覆盖标准 Win32 文本编辑目标，不再只依赖 Chrome 观察样本
+- `2026-03-21` Chromium 地址栏 / omnibox + `context-translation`：仅观察到 `capture-selection-context` 通过 `clipboard` 降级成功，返回 `anchorKind=unknown`、`canRestoreTargetAfterPrompt=false`、`canAutoWriteBackAfterPrompt=false`；当前只能视为 fallback-only 样本，不能计为 `Pass`
 - 当前下一轮优先验证目标：`系统设置搜索框`、`WPF TextBox`、`Win32 RichEdit20W/50W`
 
 ### Win32 Edit/RichEdit
@@ -108,6 +109,7 @@
 - **进程隔离**: Chromium 的渲染进程是独立的，UIA 从外部只能看到 `Chrome_WidgetWin_1` 窗口，无法穿透到 DOM 层
 - **ContentEditable**: 富文本编辑器通常使用 contenteditable div，选区存在于 DOM 中，UIA 无法获取
 - **Textarea 观察样本已通过**: Chrome `<textarea>` 已观察到 `UIA TextPattern + replace-selection` 成功，不应再把所有 Chromium 输入框一概视为“只能 Clipboard”
+- **地址栏 / Omnibox 需单独看待**: Chrome 地址栏在当前 `context-translation` 样本里没有拿到可恢复的选择上下文，`capture-selection-context` 会退化成 `clipboard` 路径并丢失锚点与 restore target；不要把 `<textarea>` 的成功外推到 omnibox
 - **复杂 DOM 仍优先 Clipboard**: `contenteditable`、复杂聊天输入框和 Electron 渲染层输入控件依旧优先按 Clipboard 路径评估，不把 `<textarea>` 的成功外推到整类目标
 
 ### Java Swing
@@ -184,7 +186,8 @@ Notes:
 - 与 TextBridge 同权限级别的目标窗口才在首版保证范围内
 - `replace-selection` 当前仅在可安全确认选区时才允许；否则会退回 `paste-translation` 或 popup fallback
 - 降级到模拟复制/粘贴时，首版不恢复原剪贴板
-- `context` 快捷键当前不会弹出独立上下文采集 UI；会按空上下文继续走翻译流程
+- `context` 快捷键已具备独立 prompt 浮窗，但当前窗口定位还没有真正消费 `PromptAnchor`，不能把当前弹窗位置表现视为最终体验
+- Chromium 地址栏 / omnibox 当前未进入 `context-translation` 的自动回写承诺范围；已观察到 `anchorKind=unknown`、无 restore target 的 fallback-only 样本
 - **新增**: Clipboard 路径不会尝试检测 IME 组合状态，组合中的文本可能丢失
 - **新增**: 密码框/安全字段当前不会主动检测和跳过，存在理论风险
 - **新增**: 多行文本校验已做换行归一化，但这只保证 helper 的安全校验不过度误杀，不代表所有富文本/自绘控件都进入承诺范围

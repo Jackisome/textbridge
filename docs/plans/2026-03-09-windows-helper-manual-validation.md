@@ -1,6 +1,6 @@
 # Windows Helper Manual Validation
 
-**Date:** 2026-03-19  
+**Date:** 2026-03-21  
 **Audience:** 开发者、本地联调、兼容性验证执行人
 
 ## Goal
@@ -18,6 +18,7 @@
 
 - `2026-03-18` Chrome `<textarea>`：已验证 `replace-selection` 成功，属于观察样本，不外推到其他 Chromium 输入控件
 - `2026-03-19` Windows 记事本：已验证 `replace-selection` 成功，且两次独立触发都通过，可作为当前 Win32 标准控件基线
+- `2026-03-21` `context-translation` 独立 prompt 浮窗已接入真实主流程，自动化验证通过；但 Chromium 地址栏样本仅观察到 `clipboard` 降级，尚未完成“prompt 后恢复原目标并自动回写”的人工闭环
 - 当前下一轮优先目标：`系统设置搜索框`、`WPF TextBox`、`Win32 RichEdit20W/50W`
 
 ## Preconditions
@@ -230,6 +231,25 @@ npm run dev
 - 若最终退到 popup fallback，剪贴板是否保留结果
 - 若是多行文本目标，额外检查 diagnostics 里的 `textComparisonMode=line-ending-normalized`，避免把 `CRLF/LF` 差异误判为真实写回失败
 
+## 2026-03-21 Manual Validation Notes
+
+### Context Prompt Popup
+
+- 已确认 `context-translation` 现在会打开真实的独立 prompt 浮窗，不再是旧版“空上下文继续翻译”的 stub
+- 当前针对 Chromium 地址栏的样本没有完成自动回写闭环
+- 主日志显示：
+  - `capture-selection-context(method=uia)` 失败，目标是 `processName=chrome` / `controlType=ListItem`
+  - 随后 `clipboard` 降级成功，但返回的是 `anchorKind=unknown`
+  - 同时 `canPositionPromptNearSelection=false`、`canRestoreTargetAfterPrompt=false`、`canAutoWriteBackAfterPrompt=false`
+- 这意味着当前地址栏样本在 prompt 提交后只会走剪贴板 / popup fallback，不会自动恢复原目标并替换文本
+
+### Recorded Follow-Up Actions
+
+- `quick-translation`：恢复热键执行前的主窗口释放逻辑，避免 `TextBridge` 主窗口在捕获成功后抢占前台焦点，导致写回阶段目标变成 `electron / TextBridge`
+- `context-translation`：在 `context-prompt-window-service` 中真正消费 `PromptAnchor`，实现基于 `selection-rect` / `control-rect` / `cursor` 的窗口定位，而不是默认居中
+- `context-translation` + Chromium 地址栏：提升 `captureSelectionContext` 的稳定性，优先在地址栏编辑态拿到 `Edit` 控件的锚点与 `restoreTarget`，避免热键后退化成 `ListItem`
+- fallback-only 透明化：当 `captureSelectionContext` 明确返回 `canRestoreTargetAfterPrompt=false` 或 `canAutoWriteBackAfterPrompt=false` 时，UI/日志应更清楚地提示“本次只支持 fallback，不承诺自动替换”
+
 ## Recording Rules
 
 每跑完一个目标应用，都把结果同步填写到：
@@ -246,4 +266,6 @@ npm run dev
 
 ## Known Gap
 
-当前 `context` 快捷键已经接入主流程，但没有独立的上下文输入弹窗；它会在没有额外指令的情况下继续翻译。这不影响“Windows 任意输入框通过快捷键触发翻译能力”的快速验证，但它仍然是后续 UI 工作项。
+- `context` 快捷键已接入独立 prompt 浮窗、IPC 与主流程编排，但“贴近选区/控件定位”仍未完成，当前窗口位置不能视为最终体验
+- Chromium 地址栏 / omnibox 在当前样本里只能可靠走 `clipboard` 降级，尚未进入“prompt 后恢复原目标并自动写回”的承诺范围
+- `quick-translation` 当前存在主窗口可见时的焦点回归，需重新接回窗口释放保护逻辑

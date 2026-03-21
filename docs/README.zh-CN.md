@@ -127,7 +127,9 @@ npm run helper:test
 
 - `health-check`：返回 helper 能力列表
 - `capture-text`：文本捕获，支持 `uia`（UI Automation）和 `clipboard` 两种方式
+- `capture-selection-context`：捕获原文、prompt 锚点、restore target 与 capability 信息
 - `write-text`：文本回写
+- `restore-target`：在 prompt 提交后尝试恢复原始目标窗口/控件
 - `clipboard-write`：剪贴板写入
 
 详细手工验证步骤见：
@@ -220,7 +222,8 @@ npm run helper:test
 - 当前仓库已完成 Windows MVP 的主要结构边界：共享 DTO、provider 边界、Win32 协议适配、fallback 决策、quick/context runner，以及设置与运行状态 UI 骨架。
 - `native/win32-helper` 已接入真实 Windows helper 宿主，并实现 `health-check`、`capture-text`、`write-text`、`clipboard-write` 四类命令。
 - 当前首版承诺优先覆盖标准可编辑控件；`replace-selection` 仍保持保守策略，在无法安全确认选区时会明确失败并转入粘贴/弹窗 fallback。
-- fallback 结果页和上下文输入页已经具备页面骨架，但完整的独立弹窗交互与 IPC 回传仍需在真实窗口流中继续接线。
+- fallback 结果页和上下文输入页已经接入真实窗口流；`context-translation` 现在会打开独立 prompt 浮窗并回传用户输入。
+- 当前仍在继续验证和完善的重点是：`PromptAnchor` 驱动的弹窗定位、prompt 后恢复原目标的稳定性，以及 Chromium 地址栏 / 复杂渲染目标的降级语义。
 - 运行状态面板默认展示已注册快捷键、当前 provider、helper 状态和最近执行摘要，不保存完整原文或译文。
 
 ## 当前验证状态
