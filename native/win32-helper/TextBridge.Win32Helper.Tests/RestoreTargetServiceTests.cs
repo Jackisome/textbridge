@@ -34,6 +34,32 @@ public sealed class RestoreTargetServiceTests
     }
 
     [Fact]
+    public async Task RestoreTarget_RestoresWindowAndAttemptsToRefocusCapturedControl()
+    {
+        var automation = new FakeRestoreTargetAutomationFacade
+        {
+            Result = RestoreTargetResult.Success(
+                restored: true,
+                new JsonObject
+                {
+                    ["requestedToken"] = "composite-token",
+                    ["windowHandle"] = 123,
+                    ["foregroundRestored"] = true,
+                    ["controlRefocused"] = true,
+                    ["refocusMethod"] = "runtime-id"
+                })
+        };
+        var service = new RestoreTargetService(automation);
+
+        var result = await service.RestoreAsync("composite-token");
+
+        Assert.True(result.Ok);
+        Assert.True(result.Restored);
+        Assert.Equal(true, result.Diagnostics["controlRefocused"]?.GetValue<bool>());
+        Assert.Equal("runtime-id", result.Diagnostics["refocusMethod"]?.GetValue<string>());
+    }
+
+    [Fact]
     public void RestoreTarget_ConvertsResultToHelperPayload()
     {
         var payload = RestoreTargetResult.Success(

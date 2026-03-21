@@ -372,7 +372,13 @@ public sealed class AutomationFacade :
         var anchor = CreatePromptAnchorSnapshot(
             focusedElement,
             foregroundWindow);
-        var restoreTargetToken = CreateRestoreTargetToken(foregroundWindow);
+        var runtimeId = TryGetRuntimeId(focusedElement);
+        var controlClassName = focusedElement?.Current.ClassName;
+        var restoreTargetToken = CreateRestoreTargetTokenWithMetadata(
+            foregroundWindow,
+            runtimeId,
+            controlClassName,
+            focusedElement?.Current.AutomationId);
         var capabilities = new SelectionContextCapabilitiesSnapshot(
             // Current real path only treats control-level proximity as near-selection-enough.
             CanPositionPromptNearSelection:
@@ -431,7 +437,7 @@ public sealed class AutomationFacade :
             ["requestedToken"] = token
         };
 
-        if (!TryParseWindowHandleToken(token, out var windowHandle))
+        if (!TryParseRestoreTargetToken(token, out var descriptor) || descriptor is null)
         {
             return RestoreTargetResult.Failure(
                 restored: false,
@@ -440,7 +446,8 @@ public sealed class AutomationFacade :
                 diagnostics: diagnostics);
         }
 
-        diagnostics["windowHandle"] = windowHandle.ToInt64();
+        var windowHandle = new IntPtr(descriptor.WindowHandle);
+        diagnostics["windowHandle"] = descriptor.WindowHandle;
         diagnostics["windowTitle"] = ReadWindowText(windowHandle);
         diagnostics["windowClassName"] = ReadWindowClassName(windowHandle);
 
@@ -453,6 +460,7 @@ public sealed class AutomationFacade :
         if (!IsWindow(windowHandle))
         {
             diagnostics["foregroundRestored"] = false;
+            diagnostics["controlRefocused"] = false;
             return RestoreTargetResult.Failure(
                 restored: false,
                 errorCode: "RESTORE_TARGET_FAILED",
@@ -465,13 +473,26 @@ public sealed class AutomationFacade :
             _ = ShowWindow(windowHandle, SwRestore);
         }
 
-        var restored =
+        var foregroundRestored =
             GetForegroundWindow() == windowHandle ||
             SetForegroundWindow(windowHandle);
 
-        diagnostics["foregroundRestored"] = restored;
+        diagnostics["foregroundRestored"] = foregroundRestored;
 
-        return restored
+        // Attempt control refocus if we have metadata
+        var (controlRefocused, refocusMethod) = AttemptControlRefocus(
+            windowHandle,
+            descriptor.RuntimeId,
+            descriptor.ControlClassName,
+            descriptor.ControlAutomationId);
+
+        diagnostics["controlRefocused"] = controlRefocused;
+        if (!string.IsNullOrWhiteSpace(refocusMethod))
+        {
+            diagnostics["refocusMethod"] = refocusMethod;
+        }
+
+        return foregroundRestored
             ? RestoreTargetResult.Success(
                 restored: true,
                 diagnostics: diagnostics)
@@ -480,6 +501,94 @@ public sealed class AutomationFacade :
                 errorCode: "RESTORE_TARGET_FAILED",
                 errorMessage: "Failed to restore the target window to the foreground.",
                 diagnostics: diagnostics);
+    }
+
+    private static (bool Refocused, string? Method) AttemptControlRefocus(
+        IntPtr windowHandle,
+        string? runtimeId,
+        string? className,
+        string? automationId)
+    {
+        // No control hints available
+        if (string.IsNullOrWhiteSpace(runtimeId) &&
+            string.IsNullOrWhiteSpace(className) &&
+            string.IsNullOrWhiteSpace(automationId))
+        {
+            return (false, null);
+        }
+
+        try
+        {
+            var windowElement = AutomationElement.FromHandle(windowHandle);
+            if (windowElement is null)
+            {
+                return (false, "window-not-found");
+            }
+
+            var conditions = new List<Condition>();
+
+            if (!string.IsNullOrWhiteSpace(runtimeId))
+            {
+                var runtimeIdParts = runtimeId.Split('-', StringSplitOptions.RemoveEmptyEntries);
+                if (runtimeIdParts.Length > 0)
+                {
+                    var ridArray = new object?[runtimeIdParts.Length];
+                    for (var i = 0; i < runtimeIdParts.Length; i++)
+                    {
+                        ridArray[i] = int.Parse(runtimeIdParts[i]);
+                    }
+
+                    conditions.Add(new PropertyCondition(
+                        AutomationElement.RuntimeIdProperty,
+                        ridArray));
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(className))
+            {
+                conditions.Add(new PropertyCondition(
+                    AutomationElement.ClassNameProperty,
+                    className,
+                    PropertyConditionFlags.IgnoreCase));
+            }
+
+            if (!string.IsNullOrWhiteSpace(automationId))
+            {
+                conditions.Add(new PropertyCondition(
+                    AutomationElement.AutomationIdProperty,
+                    automationId,
+                    PropertyConditionFlags.IgnoreCase));
+            }
+
+            if (conditions.Count == 0)
+            {
+                return (false, null);
+            }
+
+            var condition = conditions.Count > 1
+                ? new AndCondition(conditions.ToArray())
+                : conditions[0];
+
+            var element = windowElement.FindFirst(TreeScope.Children, condition);
+
+            if (element is null)
+            {
+                return (false, "element-not-found");
+            }
+
+            // Skip if this is the window element itself
+            if (element.Current.NativeWindowHandle == windowHandle.ToInt64())
+            {
+                return (false, "skip-window-element");
+            }
+
+            element.SetFocus();
+            return (true, !string.IsNullOrWhiteSpace(runtimeId) ? "runtime-id" : "class-hint");
+        }
+        catch
+        {
+            return (false, "automation-error");
+        }
     }
 
     public void SetFocusedValue(string value, string? expectedRuntimeId = null)
@@ -974,25 +1083,82 @@ public sealed class AutomationFacade :
             : $"hwnd:{windowHandle.ToInt64()}";
     }
 
-    private static bool TryParseWindowHandleToken(
-        string token,
-        out IntPtr windowHandle)
+    private sealed record RestoreTargetDescriptor(
+        long WindowHandle,
+        string? RuntimeId,
+        string? ControlClassName,
+        string? ControlAutomationId);
+
+    private static string CreateRestoreTargetTokenWithMetadata(
+        IntPtr windowHandle,
+        string? runtimeId,
+        string? controlClassName,
+        string? controlAutomationId)
     {
-        windowHandle = IntPtr.Zero;
+        if (windowHandle == IntPtr.Zero || !IsWindow(windowHandle))
+        {
+            return string.Empty;
+        }
 
-        if (!token.StartsWith("hwnd:", StringComparison.OrdinalIgnoreCase))
+        var descriptor = new RestoreTargetDescriptor(
+            windowHandle.ToInt64(),
+            runtimeId,
+            controlClassName,
+            controlAutomationId);
+
+        try
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(descriptor);
+            return Convert.ToBase64String(Encoding.UTF8.GetBytes(json));
+        }
+        catch
+        {
+            // Fall back to simple token on serialization error
+            return $"hwnd:{windowHandle.ToInt64()}";
+        }
+    }
+
+    private static bool TryParseRestoreTargetToken(
+        string token,
+        out RestoreTargetDescriptor? descriptor)
+    {
+        descriptor = null;
+
+        if (string.IsNullOrWhiteSpace(token))
         {
             return false;
         }
 
-        var handleText = token["hwnd:".Length..];
-        if (!long.TryParse(handleText, out var handleValue) || handleValue <= 0)
+        // Legacy simple token: hwnd:123
+        if (token.StartsWith("hwnd:", StringComparison.OrdinalIgnoreCase))
         {
-            return false;
+            var handleText = token["hwnd:".Length..];
+            if (!long.TryParse(handleText, out var handleValue) || handleValue <= 0)
+            {
+                return false;
+            }
+
+            descriptor = new RestoreTargetDescriptor(handleValue, null, null, null);
+            return true;
         }
 
-        windowHandle = new IntPtr(handleValue);
-        return true;
+        // Composite Base64 JSON token
+        try
+        {
+            var json = Encoding.UTF8.GetString(Convert.FromBase64String(token));
+            var parsed = System.Text.Json.JsonSerializer.Deserialize<RestoreTargetDescriptor>(json);
+            if (parsed is { WindowHandle: > 0 })
+            {
+                descriptor = parsed;
+                return true;
+            }
+        }
+        catch
+        {
+            // Not a valid composite token
+        }
+
+        return false;
     }
 
     [DllImport("user32.dll")]

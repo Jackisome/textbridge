@@ -399,6 +399,80 @@ describe('createContextTranslationRunner', () => {
     expect(showFallbackResult).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps fallback-required when the helper can restore the window but cannot safely re-focus the original control', async () => {
+    const restoreSelectionTarget = vi.fn().mockResolvedValue({
+      success: true,
+      restored: true
+    });
+    const writeTranslatedText = vi.fn();
+    const copyToClipboard = vi.fn();
+    const showFallbackResult = vi.fn();
+
+    // This scenario represents omnibox-like targets where window restore succeeds
+    // but control refocus is unsafe, so write-back falls back to clipboard
+    const selectionContext = createSelectionContext({
+      capabilities: {
+        canPositionPromptNearSelection: true,
+        canRestoreTargetAfterPrompt: true,
+        canAutoWriteBackAfterPrompt: false
+      }
+    });
+
+    const runner = createContextTranslationRunner({
+      settingsService: {
+        async getSettings() {
+          return DEFAULT_SETTINGS;
+        }
+      },
+      systemInteractionService: {
+        async captureSelectionContext() {
+          return {
+            success: true,
+            data: selectionContext
+          };
+        },
+        restoreSelectionTarget,
+        writeTranslatedText,
+        async copyToClipboard(text) {
+          copyToClipboard(text);
+        }
+      } as any,
+      translationProviderService: {
+        async translateWithSettings() {
+          return {
+            translatedText: 'Executive summary in business English.',
+            sourceLanguage: 'auto',
+            targetLanguage: 'zh-CN',
+            detectedSourceLanguage: 'en',
+            provider: 'mock'
+          };
+        }
+      },
+      popupService: {
+        async requestContextInstructions() {
+          return 'Use concise business English.';
+        },
+        async showFallbackResult(payload) {
+          showFallbackResult(payload);
+        }
+      } as any,
+      createReportId: () => 'context-report-omnibox-fallback',
+      now: () => '2026-03-21T10:00:00.000Z'
+    });
+
+    await expect(runner.run()).resolves.toMatchObject({
+      id: 'context-report-omnibox-fallback',
+      workflow: 'context-translation',
+      status: 'fallback-required',
+      errorCode: 'WRITE_BACK_UNSUPPORTED'
+    });
+
+    expect(restoreSelectionTarget).toHaveBeenCalledWith(selectionContext.restoreTarget);
+    expect(writeTranslatedText).not.toHaveBeenCalled();
+    expect(copyToClipboard).toHaveBeenCalledWith('Executive summary in business English.');
+    expect(showFallbackResult).toHaveBeenCalledTimes(1);
+  });
+
   it('falls back without attempting write-back when auto write-back after prompt is unsupported', async () => {
     const restoreSelectionTarget = vi.fn().mockResolvedValue({
       success: true,
