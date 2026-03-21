@@ -22,6 +22,7 @@ import { createTrayService } from './services/tray-service';
 import { createTranslationProviderService } from './services/translation-provider-service';
 import { createWindowService } from './services/window-service';
 import { runWithReleasedMainWindow } from './services/window-focus-guard';
+import { createNotificationService } from './platform/notification-factory';
 
 const rendererDevUrl = process.env.VITE_DEV_SERVER_URL;
 const rendererProdHtml = path.join(__dirname, '..', '..', 'dist', 'index.html');
@@ -125,12 +126,28 @@ void app.whenReady().then(async () => {
   const translationProviderService = createTranslationProviderService({
     registry: createDefaultProviderRegistry()
   });
+  const notificationService = createNotificationService();
   const popupService = createPopupService({
     requestContextInstructions: (sourceText, anchor) =>
       contextPromptRequestService.requestContextInstructions(sourceText, anchor),
-    async showFallbackResult() {
-      // Intentionally no-op: showing the main window on failure steals focus
-      // from the target app, which is the opposite of what shortcuts should do.
+    async showFallbackResult(payload) {
+      try {
+        await diagnosticLogService?.info(`[Fallback] showFallbackResult called with: ${JSON.stringify({ translatedTextLength: payload.translatedText.length, sourceTextLength: payload.sourceText.length })}`);
+        const settings = await settingsService.getSettings();
+        await diagnosticLogService?.info(`[Fallback] enablePopupFallback=${settings.enablePopupFallback}`);
+        if (settings.enablePopupFallback) {
+          await diagnosticLogService?.info('[Fallback] Showing notification...');
+          notificationService.show({
+            title: 'TextBridge',
+            hint: '翻译结果已复制到剪切板',
+            body: payload.translatedText,
+            autoCloseMs: 10000,
+          });
+          await diagnosticLogService?.info('[Fallback] notificationService.show() completed');
+        }
+      } catch (error) {
+        await diagnosticLogService?.error(`[Fallback] showFallbackResult error: ${error instanceof Error ? error.message : String(error)}`);
+      }
     },
     async showSettings() {
       await windowService.showMainWindow();
