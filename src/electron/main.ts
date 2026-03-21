@@ -1,5 +1,6 @@
 import { app, globalShortcut } from 'electron';
 import path from 'node:path';
+import { setTimeout } from 'node:timers/promises';
 import { DEFAULT_SETTINGS } from '../shared/constants/default-settings';
 import { registerContextPromptIpc } from './ipc/register-context-prompt-ipc';
 import { registerSettingsIpc } from './ipc/register-settings-ipc';
@@ -20,6 +21,7 @@ import { createSystemInteractionService } from './services/system-interaction-se
 import { createTrayService } from './services/tray-service';
 import { createTranslationProviderService } from './services/translation-provider-service';
 import { createWindowService } from './services/window-service';
+import { runWithReleasedMainWindow } from './services/window-focus-guard';
 
 const rendererDevUrl = process.env.VITE_DEV_SERVER_URL;
 const rendererProdHtml = path.join(__dirname, '..', '..', 'dist', 'index.html');
@@ -60,7 +62,11 @@ const shortcutService = createShortcutService({
         return;
       }
 
-      void runTranslationWorkflow('quick-translation', () => runner.run());
+      void runWithReleasedMainWindow(
+        windowService.getMainWindow(),
+        () => runTranslationWorkflow('quick-translation', () => runner.run()),
+        (ms) => setTimeout(ms)
+      );
     },
     onContextTranslate() {
       const runner = contextTranslationRunner;
@@ -70,7 +76,11 @@ const shortcutService = createShortcutService({
         return;
       }
 
-      void runTranslationWorkflow('context-translation', () => runner.run());
+      void runWithReleasedMainWindow(
+        windowService.getMainWindow(),
+        () => runTranslationWorkflow('context-translation', () => runner.run()),
+        (ms) => setTimeout(ms)
+      );
     }
   }
 });

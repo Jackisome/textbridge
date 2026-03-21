@@ -17,3 +17,13 @@ export async function releaseVisibleMainWindow(
   await wait(delayMs);
   return true;
 }
+
+export async function runWithReleasedMainWindow<T>(
+  mainWindow: MainWindowVisibilityController | null,
+  execute: () => Promise<T>,
+  wait: (ms: number) => Promise<void>,
+  delayMs = 120
+): Promise<T> {
+  await releaseVisibleMainWindow(mainWindow, wait, delayMs);
+  return execute();
+}
