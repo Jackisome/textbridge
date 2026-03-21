@@ -223,7 +223,7 @@ npm run helper:test
 - `native/win32-helper` 已接入真实 Windows helper 宿主，并实现 `health-check`、`capture-text`、`write-text`、`clipboard-write` 四类命令。
 - 当前首版承诺优先覆盖标准可编辑控件；`replace-selection` 仍保持保守策略，在无法安全确认选区时会明确失败并转入粘贴/弹窗 fallback。
 - fallback 结果页和上下文输入页已经接入真实窗口流；`context-translation` 现在会打开独立 prompt 浮窗并回传用户输入。
-- 当前仍在继续验证和完善的重点是：`PromptAnchor` 驱动的弹窗定位、prompt 后恢复原目标的稳定性，以及 Chromium 地址栏 / 复杂渲染目标的降级语义。
+- `PromptAnchor` 驱动的弹窗定位已完成（浮窗现在会出现在锚点附近而非默认居中）；restore token 已升级为复合格式（含 runtimeId / className 提示）并支持 UI Automation 控制 refocus；Chromium 地址栏仍为 fallback-only 样本（clipboard 降级已改善元数据，但不承诺自动回写）
 - 运行状态面板默认展示已注册快捷键、当前 provider、helper 状态和最近执行摘要，不保存完整原文或译文。
 
 ## 当前验证状态
