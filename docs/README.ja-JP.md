@@ -212,6 +212,7 @@ npm run helper:test
 - ✅ Windows Helper 統合（Tasks 1-8 of 2026-03-09 helper integration）
 - ✅ 多言語 README サポート（English, 简体中文, 日本語）
 - ✅ MiniMax Provider ネイティブ実装
+- ✅ 翻訳フォールバック用のOSネイティブトースト通知（Electron Notification API）
 
 ---
 

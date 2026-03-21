@@ -212,6 +212,7 @@ For detailed manual validation steps, see:
 - ✅ Windows Helper integration (Tasks 1-8 of 2026-03-09 helper integration)
 - ✅ Multi-language README support (English, Simplified Chinese, Japanese)
 - ✅ MiniMax Provider native implementation
+- ✅ OS-native toast notification for fallback translation (Electron Notification API)
 
 ---
 

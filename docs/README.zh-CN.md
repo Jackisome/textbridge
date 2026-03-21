@@ -214,6 +214,7 @@ npm run helper:test
 - ✅ Windows Helper 集成（Tasks 1-8 of 2026-03-09 helper integration）
 - ✅ 多语言 README 支持（English, 简体中文, 日本語）
 - ✅ MiniMax Provider 原生实现
+- ✅ OS 原生 Toast 通知用于翻译回退（Electron Notification API）
 
 ---
 
