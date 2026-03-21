@@ -282,6 +282,77 @@ describe('createWin32HelperSessionService', () => {
     });
   });
 
+  it('includes anchor kind and restore metadata for clipboard-degraded selection-context responses', async () => {
+    const fakeProcess = createFakeSpawnedProcess();
+    const logger = {
+      debug: vi.fn().mockResolvedValue(undefined),
+      warn: vi.fn().mockResolvedValue(undefined),
+      error: vi.fn().mockResolvedValue(undefined)
+    };
+    const session = createWin32HelperSessionService({
+      isPackaged: false,
+      requestTimeoutMs: 100,
+      spawnHelperProcess: () => fakeProcess.process,
+      logger
+    });
+
+    const capturePromise = session.send('capture-selection-context', {
+      method: 'clipboard'
+    });
+    await Promise.resolve();
+
+    fakeProcess.respondWith({
+      id: fakeProcess.writtenRequests[0]?.id,
+      kind: 'health-check',
+      ok: true,
+      payload: {},
+      error: null
+    });
+
+    await vi.waitFor(() => {
+      expect(fakeProcess.writtenRequests[1]?.kind).toBe(
+        'capture-selection-context'
+      );
+    });
+
+    fakeProcess.respondWith({
+      id: fakeProcess.writtenRequests[1]?.id,
+      kind: 'capture-selection-context',
+      ok: true,
+      payload: {
+        method: 'clipboard',
+        text: 'copied text',
+        anchor: {
+          kind: 'cursor'
+        },
+        restoreTarget: {
+          token: 'hwnd:1234'
+        },
+        capabilities: {
+          canPositionPromptNearSelection: true,
+          canRestoreTargetAfterPrompt: true,
+          canAutoWriteBackAfterPrompt: false
+        },
+        diagnostics: {
+          metadataSource: 'prompt-metadata-snapshot',
+          anchorKind: 'cursor'
+        }
+      },
+      error: null
+    });
+
+    await expect(capturePromise).resolves.toMatchObject({
+      kind: 'capture-selection-context',
+      ok: true
+    });
+    expect(logger.debug).toHaveBeenCalledWith(
+      expect.stringContaining('anchorKind=cursor')
+    );
+    expect(logger.debug).toHaveBeenCalledWith(
+      expect.stringContaining('restoreToken=hwnd:1234')
+    );
+  });
+
   it('logs current selection-context and restore-target diagnostics with truthful anchor details', async () => {
     const fakeProcess = createFakeSpawnedProcess();
     const logger = {

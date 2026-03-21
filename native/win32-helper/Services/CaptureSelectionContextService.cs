@@ -37,19 +37,49 @@ public sealed class CaptureSelectionContextService
                 "clipboard",
                 cancellationToken);
 
-            return captureResult.Ok
-                ? SelectionContextCaptureResult.Success(
-                    "clipboard",
-                    captureResult.Text ?? string.Empty,
-                    new PromptAnchorSnapshot("unknown"),
-                    restoreTargetToken: null,
-                    SelectionContextCapabilitiesSnapshot.None,
-                    captureResult.Diagnostics)
-                : SelectionContextCaptureResult.Failure(
+            if (!captureResult.Ok)
+            {
+                return SelectionContextCaptureResult.Failure(
                     "clipboard",
                     captureResult.ErrorCode ?? "TEXT_CAPTURE_CLIPBOARD_FAILED",
                     captureResult.ErrorMessage ?? "Clipboard copy did not produce updated text.",
                     captureResult.Diagnostics);
+            }
+
+            var metadata = _automationFacade.CapturePromptMetadataSnapshot();
+            var diagnostics = captureResult.Diagnostics.DeepClone() as JsonObject ?? new JsonObject();
+
+            // Derive anchor and restore target from the metadata snapshot
+            var anchor = DeriveAnchorFromMetadata(metadata);
+            var restoreTargetToken = metadata.ForegroundWindowHandle != IntPtr.Zero
+                ? $"hwnd:{metadata.ForegroundWindowHandle.ToInt64()}"
+                : null;
+            var capabilities = new SelectionContextCapabilitiesSnapshot(
+                CanPositionPromptNearSelection:
+                    anchor.Kind is "cursor" or "control-rect" or "window-rect" or "selection-rect",
+                CanRestoreTargetAfterPrompt: !string.IsNullOrWhiteSpace(restoreTargetToken),
+                CanAutoWriteBackAfterPrompt: false);
+
+            diagnostics["anchorKind"] = anchor.Kind;
+            diagnostics["metadataSource"] = "prompt-metadata-snapshot";
+            if (anchor.Bounds is not null)
+            {
+                diagnostics["anchorBounds"] = new JsonObject
+                {
+                    ["x"] = anchor.Bounds.X,
+                    ["y"] = anchor.Bounds.Y,
+                    ["width"] = anchor.Bounds.Width,
+                    ["height"] = anchor.Bounds.Height
+                };
+            }
+
+            return SelectionContextCaptureResult.Success(
+                "clipboard",
+                captureResult.Text ?? string.Empty,
+                anchor,
+                restoreTargetToken,
+                capabilities,
+                diagnostics);
         }
 
         if (!string.Equals(method, "uia", StringComparison.OrdinalIgnoreCase))
@@ -62,6 +92,28 @@ public sealed class CaptureSelectionContextService
         }
 
         return await Task.FromResult(_automationFacade.CaptureSelectionContext());
+    }
+
+    private static PromptAnchorSnapshot DeriveAnchorFromMetadata(PromptMetadataSnapshot metadata)
+    {
+        // Prefer cursor position when available
+        if (metadata.CursorPoint.X != 0 || metadata.CursorPoint.Y != 0)
+        {
+            return new PromptAnchorSnapshot("cursor");
+        }
+
+        // Fall back to foreground window bounds
+        if (metadata.ForegroundWindowBounds is (var bx, var by, var bw, var bh))
+        {
+            return new PromptAnchorSnapshot(
+                "window-rect",
+                bx,
+                by,
+                bw,
+                bh);
+        }
+
+        return new PromptAnchorSnapshot("unknown");
     }
 }
 

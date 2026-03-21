@@ -52,9 +52,17 @@ public sealed class CaptureSelectionContextServiceTests
     }
 
     [Fact]
-    public async Task CaptureSelectionContext_ClipboardCaptureDegradesMetadataConservatively()
+    public async Task CaptureSelectionContext_ClipboardCaptureReturnsCursorOrWindowMetadataWhenTextWasCopied()
     {
-        var automation = new FakeSelectionContextAutomationFacade();
+        var automation = new FakeSelectionContextAutomationFacade
+        {
+            PromptMetadataSnapshotResult = new PromptMetadataSnapshot(
+                CursorPoint: (640, 400),
+                ForegroundWindowHandle: new IntPtr(0x00120A3E),
+                ForegroundWindowTitle: "Untitled - Notepad",
+                ForegroundWindowClassName: "Notepad",
+                ForegroundWindowBounds: (100, 100, 800, 600))
+        };
         var clipboard = new FakeClipboardTextService();
         clipboard.ReadSequence.Enqueue("old text");
         clipboard.ReadSequence.Enqueue("world");
@@ -77,11 +85,8 @@ public sealed class CaptureSelectionContextServiceTests
         Assert.True(result.Ok);
         Assert.Equal("clipboard", result.Method);
         Assert.Equal("world", result.Text);
-        Assert.Equal("unknown", result.Anchor.Kind);
-        Assert.Null(result.RestoreTargetToken);
-        Assert.False(result.Capabilities.CanPositionPromptNearSelection);
-        Assert.False(result.Capabilities.CanRestoreTargetAfterPrompt);
-        Assert.False(result.Capabilities.CanAutoWriteBackAfterPrompt);
+        Assert.NotEqual("unknown", result.Anchor.Kind);
+        Assert.NotNull(result.RestoreTargetToken);
     }
 
     [Fact]
@@ -239,5 +244,14 @@ public sealed class FakeSelectionContextAutomationFacade : ISelectionContextAuto
             "No selection context is available.",
             new JsonObject());
 
+    public PromptMetadataSnapshot PromptMetadataSnapshotResult { get; set; } = new(
+        CursorPoint: (0, 0),
+        ForegroundWindowHandle: IntPtr.Zero,
+        ForegroundWindowTitle: null,
+        ForegroundWindowClassName: null,
+        ForegroundWindowBounds: null);
+
     public SelectionContextCaptureResult CaptureSelectionContext() => Result;
+
+    public PromptMetadataSnapshot CapturePromptMetadataSnapshot() => PromptMetadataSnapshotResult;
 }

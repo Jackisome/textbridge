@@ -16,6 +16,7 @@ public interface IAutomationFacade
 public interface ISelectionContextAutomationFacade
 {
     SelectionContextCaptureResult CaptureSelectionContext();
+    PromptMetadataSnapshot CapturePromptMetadataSnapshot();
 }
 
 public interface IFocusedElementInspectionService
@@ -123,6 +124,13 @@ public sealed record FocusedElementSnapshot(
     string? SelectionPrefixText,
     string? SelectionSuffixText,
     JsonObject Diagnostics);
+
+public sealed record PromptMetadataSnapshot(
+    (int X, int Y) CursorPoint,
+    IntPtr ForegroundWindowHandle,
+    string? ForegroundWindowTitle,
+    string? ForegroundWindowClassName,
+    (int X, int Y, int Width, int Height)? ForegroundWindowBounds);
 
 public sealed class AutomationFacade :
     IAutomationFacade,
@@ -397,6 +405,23 @@ public sealed class AutomationFacade :
             restoreTargetToken,
             capabilities,
             diagnostics);
+    }
+
+    public PromptMetadataSnapshot CapturePromptMetadataSnapshot()
+    {
+        var foregroundWindow = GetForegroundWindow();
+        var windowTitle = ReadWindowText(foregroundWindow);
+        var windowClassName = ReadWindowClassName(foregroundWindow);
+        TryGetWindowBounds(foregroundWindow, out var windowBounds);
+
+        return new PromptMetadataSnapshot(
+            CursorPoint: GetCursorPosition(),
+            ForegroundWindowHandle: foregroundWindow,
+            ForegroundWindowTitle: windowTitle,
+            ForegroundWindowClassName: windowClassName,
+            ForegroundWindowBounds: windowBounds is not null
+                ? (windowBounds.X, windowBounds.Y, windowBounds.Width, windowBounds.Height)
+                : null);
     }
 
     public RestoreTargetResult RestoreTarget(string token)
@@ -1009,6 +1034,26 @@ public sealed class AutomationFacade :
     private static extern uint GetWindowThreadProcessId(
         IntPtr windowHandle,
         out uint processId);
+
+    [DllImport("user32.dll")]
+    private static extern bool GetCursorPos(out Point point);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Point
+    {
+        public int X;
+        public int Y;
+    }
+
+    private static (int X, int Y) GetCursorPosition()
+    {
+        if (GetCursorPos(out var point))
+        {
+            return (point.X, point.Y);
+        }
+
+        return (0, 0);
+    }
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern IntPtr SendMessage(
