@@ -129,7 +129,8 @@ void app.whenReady().then(async () => {
     requestContextInstructions: (sourceText, anchor) =>
       contextPromptRequestService.requestContextInstructions(sourceText, anchor),
     async showFallbackResult() {
-      await windowService.showMainWindow();
+      // Intentionally no-op: showing the main window on failure steals focus
+      // from the target app, which is the opposite of what shortcuts should do.
     },
     async showSettings() {
       await windowService.showMainWindow();
