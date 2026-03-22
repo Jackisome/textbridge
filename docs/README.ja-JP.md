@@ -135,6 +135,20 @@ npm run helper:test
 - [docs/plans/2026-03-09-windows-helper-manual-validation.md](plans/2026-03-09-windows-helper-manual-validation.md)
 - [docs/plans/2026-03-08-windows-text-translation-compatibility-matrix.md](plans/2026-03-08-windows-text-translation-compatibility-matrix.md)
 
+### パッケージビルド
+
+```powershell
+# ポータブル版をビルド（インストール不要）
+npm run package
+
+# NSIS インストーラーをビルド
+npm run package:installer
+```
+
+出力：
+- ポータブル版：`release/win-unpacked/TextBridge.exe`
+- インストーラー：`release/TextBridge Setup 1.0.0.exe`
+
 ## ディレクトリ説明
 
 - `src/electron/main.ts`：Electronメインプロセスエントリ

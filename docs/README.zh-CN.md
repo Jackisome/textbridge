@@ -137,6 +137,20 @@ npm run helper:test
 - [docs/plans/2026-03-09-windows-helper-manual-validation.md](plans/2026-03-09-windows-helper-manual-validation.md)
 - [docs/plans/2026-03-08-windows-text-translation-compatibility-matrix.md](plans/2026-03-08-windows-text-translation-compatibility-matrix.md)
 
+### 打包分发
+
+```powershell
+# 构建便携版（无需安装）
+npm run package
+
+# 构建 NSIS 安装包
+npm run package:installer
+```
+
+输出产物：
+- 便携版：`release/win-unpacked/TextBridge.exe`
+- 安装包：`release/TextBridge Setup 1.0.0.exe`
+
 ## 目录说明
 
 - `src/electron/main.ts`：Electron 主进程入口

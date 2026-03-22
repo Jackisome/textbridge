@@ -135,6 +135,20 @@ For detailed manual validation steps, see:
 - [docs/plans/2026-03-09-windows-helper-manual-validation.md](docs/plans/2026-03-09-windows-helper-manual-validation.md)
 - [docs/plans/2026-03-08-windows-text-translation-compatibility-matrix.md](docs/plans/2026-03-08-windows-text-translation-compatibility-matrix.md)
 
+### Package for Distribution
+
+```powershell
+# Build portable version (no installation needed)
+npm run package
+
+# Build NSIS installer
+npm run package:installer
+```
+
+Output:
+- Portable: `release/win-unpacked/TextBridge.exe`
+- Installer: `release/TextBridge Setup 1.0.0.exe`
+
 ## Directory Structure
 
 - `src/electron/main.ts`: Electron main process entry
