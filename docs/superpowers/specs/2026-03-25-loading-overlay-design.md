@@ -2,14 +2,15 @@
 
 ## 概述
 
-在用户按下快捷键触发翻译后，显示一个跟随光标的加载动画（转圈），直到翻译完成（回写成功自动消失，回写失败保持并转为结果通知），提供即时反馈以改善用户体验。
+在用户按下快捷键触发翻译后，显示一个跟随光标的加载动画（转圈），直到翻译完成（回写成功自动消失，回写失败则 Overlay 保持并弹出系统通知），提供即时反馈以改善用户体验。
 
 ## 用户体验目标
 
 - 快捷键按下 → 光标旁立即显示转圈动画
 - 翻译/回写成功 → 转圈自动消失
-- 回写失败 → 转圈保持，转为结果通知
-- 30 秒超时保护 → 超时后自动消失并提示
+- 回写失败 → Overlay 保持，同时弹出系统通知展示翻译结果
+- 30 秒超时保护 → 超时后自动消失并弹出超时提示
+- 超时/异常时不取消底层翻译请求（允许静默继续）
 
 ## 技术方案
 
@@ -21,7 +22,6 @@
 - 独立于主窗口，不影响目标应用交互
 - `alwaysOnTop` 确保始终可见
 - `transparent` 实现无背景仅动画效果
-- 通过 IPC 与主进程通信控制显示/隐藏
 
 ### 窗口属性
 
@@ -45,6 +45,19 @@
 - 翻译流程期间，每 100ms 更新一次位置（跟随光标）
 - 翻译完成后停止更新并隐藏
 
+### 复用现有渲染器模式
+
+Overlay 窗口复用项目已有的 `?view=xxx` 多视图模式，而非引入新的 HTML 入口：
+
+```typescript
+// 创建 Overlay 窗口 URL
+const url = new URL(baseUrl);
+url.searchParams.set('view', 'loading-overlay');
+overlayWindow.loadURL(url.toString());
+```
+
+这与 `ContextPromptWindowService` 的实现模式一致。
+
 ## 组件架构
 
 ```
@@ -54,22 +67,23 @@ src/
 │   │   ├── loading-overlay-service.ts      # 主服务，管理窗口生命周期
 │   │   └── loading-overlay-window.ts       # BrowserWindow 创建逻辑
 │   └── main.ts                             # 集成 loadingOverlayService
-├── renderer/
-│   ├── components/
-│   │   └── LoadingOverlay.tsx              # React 转圈组件
-│   └── pages/
-│       └── loading-overlay-page.tsx         # 页面入口，渲染 LoadingOverlay
-└── web/
-    └── loading-overlay.html                 # Overlay 窗口 HTML 入口
+└── renderer/
+    ├── components/
+    │   └── LoadingOverlay.tsx              # React 转圈组件
+    └── pages/
+        └── LoadingOverlayPage.tsx           # 渲染 LoadingOverlay，入口为 ?view=loading-overlay
 ```
+
+> 复用 `index.html` 和 preload，无需新增 HTML 入口文件。
 
 ### IPC 通道
 
 | 通道 | 方向 | 说明 |
 |------|------|------|
-| `loading-overlay:show` | main → renderer | 显示 Overlay，传递初始光标位置 |
+| `loading-overlay:show` | main → renderer | 显示 Overlay |
 | `loading-overlay:hide` | main → renderer | 隐藏 Overlay |
-| `loading-overlay:update-position` | main → renderer | 更新光标位置 |
+
+> 位置更新由主进程直接通过 `overlayWindow.setPosition()` 完成，无需 IPC。
 
 ## 实现逻辑
 
@@ -79,15 +93,29 @@ src/
 ShortcutsService.onQuickTranslate()
     │
     ▼
-loadingOverlayService.show()           // 1. 创建/显示 Overlay
+loadingOverlayService.show()           // 1. 检查 isActive，若已激活则直接返回
     │
     ▼
-QuickTranslationRunner.run()          // 2. 执行翻译流程
+QuickTranslationRunner.run()           // 2. 执行翻译流程
     │
     ├─► 成功 → loadingOverlayService.hide()
     │
-    └─► 失败 → loadingOverlayService.showResult() → 通知 + 保持显示
+    └─► 失败 → notificationService.show()     // 系统通知
+              + loadingOverlayService.hide()   // Overlay 隐藏
 ```
+
+**回写失败处理：**
+- Overlay 隐藏（与成功流程相同）
+- 同时通过 `notificationService.show()` 弹出系统通知
+- 两者独立，无 100ms 延迟
+
+**其他失败情况（capture 失败、provider 失败等）：**
+- 同上：Overlay 隐藏 + 系统通知
+
+**超时处理：**
+- Overlay 隐藏
+- 系统通知："翻译超时，请重试"
+- 底层翻译请求继续执行（可能后续收到结果但不展示）
 
 ### 位置跟随
 
@@ -113,6 +141,7 @@ let timeoutTimer = setTimeout(() => {
     title: 'TextBridge',
     body: '翻译超时，请重试',
   });
+  // 注意：底层翻译请求继续执行，但不展示结果
 }, TIMEOUT_MS);
 
 // 翻译完成时清除 timer
@@ -151,7 +180,9 @@ import { createLoadingOverlayService } from './services/loading-overlay-service'
 
 // 创建服务
 const loadingOverlayService = createLoadingOverlayService({
-  loadURL: (path) => mainWindow.webContents.loadURL(path),
+  rendererDevUrl: process.env.VITE_DEV_SERVER_URL,
+  rendererProdHtml: path.join(__dirname, '../../dist/index.html'),
+  preloadPath: path.join(__dirname, '../../dist-electron/preload.js'),
 });
 
 // 在 ShortcutService 回调中使用
@@ -173,14 +204,32 @@ const shortcutService = createShortcutService({
 });
 ```
 
+## 并发控制
+
+`loadingOverlayService` 同时控制 Overlay 显示和翻译请求：
+
+- `show()` 时检查 `isActive`，若已激活则**同时忽略 Overlay 显示和翻译请求**
+- 防止用户快速连续按快捷键导致多个 overlay 和多个翻译请求重叠
+- `hide()` 时重置 `isActive = false`
+
+```typescript
+let isActive = false;
+
+function show() {
+  if (isActive) return; // 同时忽略 Overlay 和翻译请求
+  isActive = true;
+  // ... 创建窗口、启动翻译
+}
+
+function hide() {
+  isActive = false;
+  // ... 销毁窗口
+}
+```
+
 ## 依赖
 
 - Electron `BrowserWindow` API
 - `screen.getCursorScreenPoint()` 获取光标位置
 - IPC 通信控制渲染层
-
-## 待定项
-
-- [ ] 组件开发
-- [ ] 单元测试
-- [ ] 人工验证
+- `NotificationService` 翻译结果/超时通知
