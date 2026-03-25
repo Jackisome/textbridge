@@ -8,6 +8,7 @@
 
 - 快捷键按下 → 光标旁立即显示转圈动画
 - 翻译完成（成功、失败、或 fallback-required）→ 转圈自动消失
+  > fallback-required 时 runner 会通过 popup presenter 展示结果，overlay 在 `finally()` 中隐藏
 - V1 仅覆盖 quick translation（不包含 context translation）
 - V1 暂不覆盖失败态通知和超时保护
 
@@ -89,7 +90,7 @@ Overlay 使用单一 BrowserWindow 实例，预先创建（不销毁），通过
 
 ### 并发策略
 
-"进行中忽略新触发"：当 Overlay 处于显示状态时，新的快捷键触发被静默忽略。这通过单例窗口的 `show()` 调用是幂等的来保证——重复调用已显示的窗口不会重新加载或闪烁。
+"进行中忽略新触发"：翻译进行中时，新的快捷键触发被静默忽略。ShortcutsService 回调持有 `isActive` 标志，在 `run().finally()` 回调中重置。第二次快捷键触发时若 `isActive === true`，则直接 return。
 
 ### 窗口预热
 
