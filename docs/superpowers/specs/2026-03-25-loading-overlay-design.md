@@ -8,7 +8,7 @@
 
 - 快捷键按下 → 光标旁立即显示转圈动画
 - 翻译完成（成功或失败）→ 转圈自动消失
-- V1 暂不覆盖失败态通知和超时保护（见"待扩展项"）
+- V1 暂不覆盖失败态通知和超时保护
 
 ## 技术方案
 
@@ -27,20 +27,28 @@
 {
   transparent: true,
   alwaysOnTop: true,
-  frame: false,           // 无边框
-  skipTaskbar: true,      // 不显示在任务栏
+  frame: false,
+  skipTaskbar: true,
   resizable: false,
-  focusable: false,       // 不可聚焦，不拦截输入
+  focusable: false,
   width: 40,
   height: 40,
 }
+```
+
+### 点击穿透
+
+Overlay 窗口需要点击穿透，不拦截鼠标事件：
+
+```typescript
+overlayWindow.setIgnoreMouseEvents(true, { forward: true });
 ```
 
 ### 窗口位置
 
 - 使用 `screen.getCursorScreenPoint()` 获取光标位置
 - 偏移量：+16, +16 像素（显示在光标右下角）
-- 仅在 `show()` 时设置一次位置，翻译期间固定不动
+- 需做屏幕边缘裁剪，防止窗口超出屏幕
 
 ### 复用现有渲染器模式
 
@@ -58,44 +66,33 @@ overlayWindow.loadURL(url.toString());
 src/
 ├── electron/
 │   ├── services/
-│   │   ├── loading-overlay-service.ts      # 主服务，管理窗口生命周期
+│   │   ├── loading-overlay-service.ts      # 主服务，管理窗口生命周期（单例）
 │   │   └── loading-overlay-window.ts       # BrowserWindow 创建逻辑
 │   └── main.ts                             # 集成 loadingOverlayService
 └── renderer/
     ├── components/
     │   └── LoadingOverlay.tsx              # React 转圈组件
     └── pages/
-        └── LoadingOverlayPage.tsx           # 渲染 LoadingOverlay，入口为 ?view=loading-overlay
+        └── LoadingOverlayPage.tsx           # 渲染 LoadingOverlay
 ```
 
 **App.tsx 路由变更：** 在 `App.tsx` 中添加 `?view=loading-overlay` 的路由分支，渲染 `LoadingOverlayPage`。
 
-## 实现逻辑
+## 设计原则
 
-### 显示流程
+### 单例窗口
 
-```
-ShortcutsService.onQuickTranslate()
-    │
-    ▼
-loadingOverlayService.show()           // 1. 检查 isActive，若已激活则直接返回
-    │
-    ▼
-QuickTranslationRunner.run()           // 2. 执行翻译流程
-    │
-    ├─► 完成 → loadingOverlayService.hide()
-```
+Overlay 使用单一 BrowserWindow 实例，预先创建（不销毁），通过 `show()` / `hide()` 控制显示隐藏。这确保：
+- 首次触发无窗口创建延迟
+- 无需并发控制（单例窗口本身解决重叠问题）
 
-> V1：无论成功/失败，Overlay 均自动消失。暂不区分 UX。
+### 窗口预热
 
-### 位置跟随
+在 `App.on('ready')` 时预先创建 Overlay 窗口并隐藏，而非按需创建。
 
-显示时获取一次光标位置并设置窗口：
+### 边缘裁剪
 
-```typescript
-const pos = screen.getCursorScreenPoint();
-overlayWindow.setPosition(pos.x + 16, pos.y + 16);
-```
+窗口位置需在 `screen.getDisplayNearestPoint()` 返回的 `workArea` 内，避免超出屏幕边界。
 
 ## 外观
 
@@ -110,42 +107,39 @@ overlayWindow.setPosition(pos.x + 16, pos.y + 16);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
 ```
 
 - 尺寸：24x24 像素
-- 颜色：暗灰 `#666`，浅色环境适配
+- 颜色：暗灰 `#666`
 - 无背景，完全透明
 
-## 主进程集成
+## 集成点
+
+在 `main.ts` 中初始化：
 
 ```typescript
 import { createLoadingOverlayService } from './services/loading-overlay-service';
 
 const loadingOverlayService = createLoadingOverlayService({
-  rendererDevUrl: process.env.VITE_DEV_SERVER_URL,
-  rendererProdHtml: path.join(__dirname, '../../dist/index.html'),
   preloadPath: path.join(__dirname, '../../dist-electron/preload.js'),
+  rendererUrl: process.env.VITE_DEV_SERVER_URL ?? `file://${path.join(__dirname, '../../dist/index.html')}`,
 });
 
-let isActive = false;
+// 窗口预热（在 ready 时）
+app.whenReady().then(() => {
+  loadingOverlayService.prepare();  // 创建窗口并隐藏
+});
 
+// ShortcutService 中使用
 const shortcutService = createShortcutService({
-  registrar: globalShortcut,
   handlers: {
     onQuickTranslate() {
-      if (isActive) return;  // 忽略重复请求
-      isActive = true;
-
       runWithReleasedMainWindow(() => {
-        loadingOverlayService.show();
+        const pos = screen.getCursorScreenPoint();
+        loadingOverlayService.showAt(pos.x, pos.y);
 
         quickTranslationRunner.run().finally(() => {
           loadingOverlayService.hide();
-          isActive = false;
         });
       });
     },
@@ -153,27 +147,16 @@ const shortcutService = createShortcutService({
 });
 ```
 
-## 并发控制
-
-`isActive` 由 ShortcutService 回调层管理。若已激活，新请求被静默忽略。
-
-## 依赖
-
-- Electron `BrowserWindow` API
-- `screen.getCursorScreenPoint()` 获取光标位置
-
 ## 待扩展项
 
-以下功能在 V1 中暂不实现，作为后续迭代：
-
-- [ ] **失败态通知**：回写失败时弹出系统通知，展示翻译结果或失败原因
-- [ ] **超时保护**：30 秒超时后自动消失并提示，丢弃晚到的翻译结果
-- [ ] **Context Translation 支持**：在用户提交 prompt 后显示 overlay
-- [ ] **持续位置跟随**：翻译期间持续跟随光标位置
+- [ ] **失败态通知**：回写失败时弹出系统通知
+- [ ] **超时保护**：30 秒超时后自动消失
+- [ ] **Context Translation 支持**
+- [ ] **持续位置跟随**：翻译期间跟随光标
 
 ## 验收标准
 
 1. 快捷键按下后，光标附近显示转圈动画
 2. 翻译完成后（成功或失败），转圈自动消失
-3. 快速连续按快捷键不会导致多个 overlay 重叠
-4. Overlay 不会干扰目标应用的交互
+3. Overlay 不会干扰目标应用的鼠标交互
+4. 窗口不会超出屏幕边界
