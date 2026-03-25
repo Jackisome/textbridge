@@ -7,7 +7,8 @@
 ## 用户体验目标
 
 - 快捷键按下 → 光标旁立即显示转圈动画
-- 翻译完成（成功或失败）→ 转圈自动消失
+- 翻译完成（成功、失败、或 fallback-required）→ 转圈自动消失
+- V1 仅覆盖 quick translation（不包含 context translation）
 - V1 暂不覆盖失败态通知和超时保护
 
 ## 技术方案
@@ -84,11 +85,15 @@ src/
 
 Overlay 使用单一 BrowserWindow 实例，预先创建（不销毁），通过 `show()` / `hide()` 控制显示隐藏。这确保：
 - 首次触发无窗口创建延迟
-- 无需并发控制（单例窗口本身解决重叠问题）
+- 无需 isActive 标志
+
+### 并发策略
+
+"进行中忽略新触发"：当 Overlay 处于显示状态时，新的快捷键触发被静默忽略。这通过单例窗口的 `show()` 调用是幂等的来保证——重复调用已显示的窗口不会重新加载或闪烁。
 
 ### 窗口预热
 
-在 `App.on('ready')` 时预先创建 Overlay 窗口并隐藏，而非按需创建。
+在 `App.on('ready')` 时预先创建 Overlay 窗口并隐藏。若创建失败，则按需创建（退化到按需模式）。
 
 ### 边缘裁剪
 
@@ -121,31 +126,32 @@ Overlay 使用单一 BrowserWindow 实例，预先创建（不销毁），通过
 import { createLoadingOverlayService } from './services/loading-overlay-service';
 
 const loadingOverlayService = createLoadingOverlayService({
-  preloadPath: path.join(__dirname, '../../dist-electron/preload.js'),
-  rendererUrl: process.env.VITE_DEV_SERVER_URL ?? `file://${path.join(__dirname, '../../dist/index.html')}`,
+  preloadPath: path.join(__dirname, 'preload.js'),  // 与 main.ts 一致
+  rendererUrl: process.env.VITE_DEV_SERVER_URL ?? `file://${path.join(__dirname, '../dist/index.html')}`,
 });
 
 // 窗口预热（在 ready 时）
 app.whenReady().then(() => {
-  loadingOverlayService.prepare();  // 创建窗口并隐藏
+  loadingOverlayService.prepare();
 });
 
 // ShortcutService 中使用
 const shortcutService = createShortcutService({
   handlers: {
     onQuickTranslate() {
-      runWithReleasedMainWindow(() => {
-        const pos = screen.getCursorScreenPoint();
-        loadingOverlayService.showAt(pos.x, pos.y);
+      // 获取光标位置，显示 overlay
+      const pos = screen.getCursorScreenPoint();
+      loadingOverlayService.showAt(pos.x, pos.y);
 
-        quickTranslationRunner.run().finally(() => {
-          loadingOverlayService.hide();
-        });
+      quickTranslationRunner.run().finally(() => {
+        loadingOverlayService.hide();
       });
     },
   },
 });
 ```
+
+> 具体集成方式由 implementation plan 确定，此处仅为架构示意。
 
 ## 待扩展项
 
