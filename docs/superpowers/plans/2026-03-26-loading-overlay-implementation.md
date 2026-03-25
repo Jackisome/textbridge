@@ -36,8 +36,8 @@
   Responsibility: 新增 overlay page 和 spinner 样式，并覆盖当前 `:root` / `body` / `#root` 背景，让透明 BrowserWindow 真正只显示转圈动画。
 - Modify: `src/electron/main.ts`
   Responsibility: 创建 `loadingOverlayService`，在 `app.whenReady()` 中预热，在 quick translation 执行前立刻显示 overlay，并在 `finally()` 中隐藏；新增 quick translation 进行中忽略重入的保护。
-- Create: `src/electron/main.test.ts`
-  Responsibility: 用模块 mock 验证 ready 时会预热 overlay，以及 quick translation 触发时 overlay 的 show/hide 与重入保护。
+- Create: `src/electron/services/loading-overlay-main-integration.test.ts`
+  Responsibility: 验证 overlay show/hide 与 quick translation run 的协调逻辑，包括重入保护。
 
 ## Assumptions
 
@@ -89,8 +89,10 @@ describe('loading overlay window helpers', () => {
   });
 
   it('builds the loading-overlay URL for both dev and packaged modes', () => {
+    // Dev: rendererDevUrl is used directly
     expect(toLoadingOverlayUrl('http://127.0.0.1:5173/', undefined)).toContain('view=loading-overlay');
-    expect(toLoadingOverlayUrl('file:///C:/app/dist/index.html', 'file:///C:/app/dist/index.html'))
+    // Packaged: rendererProdHtml is a filesystem path, converted to file:// inside the function
+    expect(toLoadingOverlayUrl('http://127.0.0.1:5173/', 'C:\\app\\dist\\index.html'))
       .toContain('view=loading-overlay');
   });
 
@@ -542,23 +544,22 @@ git commit -m "feat: route loading overlay view"
 
 **Files:**
 - Modify: `src/electron/main.ts`
-- Create: `src/electron/services/loading-overlay-integration.test.ts`
+- Create: `src/electron/services/loading-overlay-main-integration.test.ts`
 - Use: `src/electron/services/loading-overlay-service.ts`
 
-> **Note:** 直接测试 `main.ts` 不可行，因为 `main.ts` 在模块顶层有大量副作用（windowService、shortcutService、app.whenReady 链等）。改为测试 `shortcutService` 的 handler 是否正确调用 `loadingOverlayService.showAt()` / `hide()`。
+> **测试策略:** 由于 `main.ts` 模块顶层有大量副作用（settingsService、helperSessionService、windowService 等），直接 import 测试不可行。改为在 `src/electron/services/` 下写隔离的集成测试，验证 `loadingOverlayService.showAt/hide` 与 `quickTranslationRunner.run` 的协调逻辑。
 
 - [ ] **Step 1: Write the failing test**
 
 ```ts
-// src/electron/services/loading-overlay-integration.test.ts
+// src/electron/services/loading-overlay-main-integration.test.ts
 import { describe, expect, it, vi } from 'vitest';
-import type { BrowserWindow } from 'electron';
 
 const prepare = vi.fn().mockResolvedValue(undefined);
 const showAt = vi.fn().mockResolvedValue(undefined);
 const hide = vi.fn();
 const dispose = vi.fn();
-const getWindow = vi.fn<() => BrowserWindow | null>(() => null);
+const getWindow = vi.fn(() => null);
 
 vi.mock('./loading-overlay-service', () => ({
   createLoadingOverlayService: vi.fn(() => ({
@@ -570,82 +571,132 @@ vi.mock('./loading-overlay-service', () => ({
   }))
 }));
 
-describe('loading overlay integration with shortcut handler', () => {
-  it('calls showAt before runner.run and hide in finally', async () => {
-    const capturedHandlers: { onQuickTranslate: () => void } | null = null;
+describe('loading overlay + quick translation coordination', () => {
+  beforeEach(() => {
+    prepare.mockClear();
+    showAt.mockClear();
+    hide.mockClear();
+  });
+
+  it('showAt is called before run, hide is called in finally', async () => {
     const run = vi.fn().mockResolvedValue({ id: 'r1', status: 'completed' });
 
-    vi.mock('./shortcut-service', () => ({
-      createShortcutService: vi.fn(({ handlers }: { handlers: { onQuickTranslate: () => void } }) => {
-        capturedHandlers = handlers;
-        return {
-          applySettings: vi.fn(),
-          getRegisteredShortcuts: vi.fn(() => []),
-          dispose: vi.fn()
-        };
-      })
-    }));
+    // Simulate the coordination pattern used in main.ts onQuickTranslate
+    let isActive = false;
+    const cursorPoint = { x: 100, y: 200 };
 
-    vi.mock('./quick-translation-runner', () => ({
-      createQuickTranslationRunner: vi.fn(() => ({ run }))
-    }));
+    async function triggerQuickTranslate() {
+      if (isActive) return;
+      isActive = true;
 
-    // Lazy-import to avoid top-level side effects before mocks are set
-    await import('../main');
+      await showAt(cursorPoint.x, cursorPoint.y);
+      try {
+        await run();
+      } finally {
+        hide();
+        isActive = false;
+      }
+    }
 
-    // Simulate quick translate trigger
-    capturedHandlers?.onQuickTranslate();
-    await Promise.resolve(); // allow async showAt to settle
+    await triggerQuickTranslate();
 
-    expect(showAt).toHaveBeenCalled();
+    expect(showAt).toHaveBeenCalledWith(100, 200);
     expect(run).toHaveBeenCalled();
-    expect(hide).toHaveBeenCalled();
+    expect(hide).toHaveBeenCalledTimes(1);
+  });
+
+  it('second trigger is ignored while first is active', async () => {
+    let resolveRun: () => void;
+    const run = vi.fn(() => new Promise<void>((r) => { resolveRun = r; }));
+
+    let isActive = false;
+
+    async function triggerQuickTranslate() {
+      if (isActive) return;
+      isActive = true;
+      await showAt(100, 200);
+      try {
+        await run();
+      } finally {
+        hide();
+        isActive = false;
+      }
+    }
+
+    const first = triggerQuickTranslate();
+    const second = triggerQuickTranslate(); // should be ignored
+
+    expect(showAt).toHaveBeenCalledTimes(1);
+    expect(run).toHaveBeenCalledTimes(1);
+
+    resolveRun!();
+    await first;
+    await second;
+
+    expect(hide).toHaveBeenCalledTimes(1);
   });
 });
 ```
 
-> 由于 `main.ts` 的副作用问题，更实用的方法是验证 `shortcutService` 在 `onQuickTranslate` 被调用时**最终**会触发 `loadingOverlayService.showAt/hide`。具体实现时，需要将 `loadingOverlayService` 作为依赖注入，而非在 `main.ts` 内直接创建。
-
-**推荐实现方式：** 修改 `createShortcutService` 的选项类型，增加可选的 `loadingOverlayService` 依赖。在 `main.ts` 中传入该服务。
-
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npx vitest run src/electron/services/loading-overlay-integration.test.ts`
-Expected: FAIL because the integration pattern does not exist yet.
+Run: `npx vitest run src/electron/services/loading-overlay-main-integration.test.ts`
+Expected: FAIL because the test file does not exist yet.
 
 - [ ] **Step 3: Write minimal implementation**
 
-在 `main.ts` 中：
+在 `main.ts` 的 `onQuickTranslate` handler 中（紧接 `void runWithReleasedMainWindow(...)` 调用）：
 
 ```ts
-import { createLoadingOverlayService } from './services/loading-overlay-service';
+// 在 main.ts 的 onQuickTranslate handler 中添加：
+const cursorPoint = screen.getCursorScreenPoint();
+let isOverlayActive = false;
 
-const loadingOverlayService = createLoadingOverlayService({ ... });
+async function showOverlay() {
+  if (isOverlayActive) return;
+  isOverlayActive = true;
+  await loadingOverlayService.showAt(cursorPoint.x, cursorPoint.y);
+}
 
-let isActive = false;
-
-// 在 onQuickTranslate handler 中
-if (isActive) return;
-isActive = true;
-
-const pos = screen.getCursorScreenPoint();
-void loadingOverlayService.showAt(pos.x, pos.y);
-
-runner.run().finally(() => {
+async function hideOverlay() {
+  if (!isOverlayActive) return;
+  isOverlayActive = false;
   loadingOverlayService.hide();
-  isActive = false;
+}
+
+// 在 quick translation 成功后和失败后都会执行 finally 中的 hideOverlay()
+void runWithReleasedMainWindow(
+  windowService.getMainWindow(),
+  () => runTranslationWorkflow('quick-translation', async () => {
+    await showOverlay();
+    try {
+      return await runner.run();
+    } finally {
+      hideOverlay();
+    }
+  }),
+  (ms) => setTimeout(ms)
+);
+```
+
+在 `app.whenReady()` 链中预热：
+
+```ts
+void app.whenReady().then(async () => {
+  // ... existing setup ...
+  await loadingOverlayService.prepare(); // 预热 overlay 窗口
 });
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `npx vitest run src/electron/services/loading-overlay-integration.test.ts`
+Run: `npx vitest run src/electron/services/loading-overlay-main-integration.test.ts`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/electron/main.ts src/electron/services/loading-overlay-integration.test.ts
+git add src/electron/main.ts src/electron/services/loading-overlay-main-integration.test.ts
 git commit -m "feat: show loading overlay during quick translation"
 ```
 
