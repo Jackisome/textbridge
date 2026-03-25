@@ -212,7 +212,42 @@ describe('createLoadingOverlayService', () => {
   });
 
   it('drops a broken window after load failure so a later showAt can recreate it', async () => {
-    // first createWindow() returns a broken instance; second returns a healthy one
+    // Simulate: first window has broken loadURL, second is healthy
+    let callCount = 0;
+    const loadURL = vi.fn().mockImplementation(() => {
+      callCount++;
+      if (callCount === 1) return Promise.reject(new Error('load failed'));
+      return Promise.resolve();
+    });
+    const show = vi.fn();
+    const hide = vi.fn();
+    const isDestroyed = vi.fn().mockReturnValue(false);
+    const destroy = vi.fn();
+    const createWindow = vi.fn().mockReturnValue({
+      loadURL,
+      show,
+      hide,
+      isDestroyed,
+      destroy,
+      on: vi.fn()
+    });
+
+    const service = createLoadingOverlayService({
+      createWindow,
+      rendererDevUrl: 'http://127.0.0.1:5173/',
+      rendererProdHtml: undefined,
+      getDisplayNearestPoint: () => ({ workArea: { x: 0, y: 0, width: 1920, height: 1080 } })
+    });
+
+    // First prepare fails (load rejected)
+    await service.prepare();
+    expect(createWindow).toHaveBeenCalledTimes(1);
+    expect(destroy).toHaveBeenCalledTimes(1); // broken window destroyed
+
+    // Second prepare recreates
+    await service.prepare();
+    expect(createWindow).toHaveBeenCalledTimes(2);
+    expect(destroy).toHaveBeenCalledTimes(1); // only first was destroyed
   });
 });
 ```
@@ -645,38 +680,43 @@ Expected: FAIL because the test file does not exist yet.
 
 - [ ] **Step 3: Write minimal implementation**
 
-在 `main.ts` 的 `onQuickTranslate` handler 中（紧接 `void runWithReleasedMainWindow(...)` 调用）：
+在 `main.ts` 中，**在 `createShortcutService` 调用之前**定义模块级共享状态：
 
 ```ts
-// 在 main.ts 的 onQuickTranslate handler 中添加：
-const cursorPoint = screen.getCursorScreenPoint();
-let isOverlayActive = false;
+// 模块级共享状态，防止并发 runner
+let isQuickTranslationActive = false;
 
-async function showOverlay() {
-  if (isOverlayActive) return;
-  isOverlayActive = true;
-  await loadingOverlayService.showAt(cursorPoint.x, cursorPoint.y);
-}
+// onQuickTranslate handler 中使用 shared isQuickTranslationActive
+const shortcutService = createShortcutService({
+  handlers: {
+    onQuickTranslate() {
+      if (isQuickTranslationActive) return; // 重入保护（规格要求）
 
-async function hideOverlay() {
-  if (!isOverlayActive) return;
-  isOverlayActive = false;
-  loadingOverlayService.hide();
-}
+      const runner = quickTranslationRunner;
+      if (!runner) {
+        void windowService.showMainWindow();
+        return;
+      }
 
-// 在 quick translation 成功后和失败后都会执行 finally 中的 hideOverlay()
-void runWithReleasedMainWindow(
-  windowService.getMainWindow(),
-  () => runTranslationWorkflow('quick-translation', async () => {
-    await showOverlay();
-    try {
-      return await runner.run();
-    } finally {
-      hideOverlay();
-    }
-  }),
-  (ms) => setTimeout(ms)
-);
+      isQuickTranslationActive = true;
+      const cursorPoint = screen.getCursorScreenPoint();
+
+      // overlay show 失败只记录，不阻断主流程
+      loadingOverlayService.showAt(cursorPoint.x, cursorPoint.y).catch(() => {
+        // silent - overlay is UX enhancement only
+      });
+
+      void runWithReleasedMainWindow(
+        windowService.getMainWindow(),
+        () => runTranslationWorkflow('quick-translation', () => runner.run()),
+        (ms) => setTimeout(ms)
+      ).finally(() => {
+        loadingOverlayService.hide();
+        isQuickTranslationActive = false;
+      });
+    },
+  },
+});
 ```
 
 在 `app.whenReady()` 链中预热：
