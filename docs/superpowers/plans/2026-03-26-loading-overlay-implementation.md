@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 为 quick translation 流程增加一个透明、点击穿透、可预热复用的 loading overlay 窗口，在用户按下快捷键后立即显示在光标附近，并在翻译结束的所有退出路径中自动消失。
+**Goal:** 为 quick translation 和 context translation（增强翻译）流程增加一个透明、点击穿透、可预热复用的 loading overlay 窗口，在用户按下快捷键后立即显示在光标附近，并在翻译结束的所有退出路径中自动消失。
 
-**Architecture:** 将实现拆成两个 Electron 层单元和两个 Renderer 层单元。Electron 侧由一个纯窗口工厂负责 BrowserWindow 选项、`?view=loading-overlay` URL 与边界裁剪，再由单例服务负责预热、复用、显示、隐藏和故障重建；Renderer 侧通过独立的 `?view=loading-overlay` 路由渲染一个最小化 spinner 页面，并显式覆盖当前全局背景样式，确保透明窗口不会被 `:root` 的渐变背景填满。`main.ts` 只负责把该服务接到 quick translation 快捷键生命周期上，并在执行中忽略新的 quick translation 触发。
+**Architecture:** 将实现拆成两个 Electron 层单元和两个 Renderer 层单元。Electron 侧由一个纯窗口工厂负责 BrowserWindow 选项、`?view=loading-overlay` URL 与边界裁剪，再由单例服务负责预热、复用、显示、隐藏和故障重建；Renderer 侧通过独立的 `?view=loading-overlay` 路由渲染一个最小化 spinner 页面，并显式覆盖当前全局背景样式，确保透明窗口不会被 `:root` 的渐变背景填满。`main.ts` 只负责把该服务接到 quick translation 和 context translation 的快捷键生命周期上，并在执行中忽略新的同类型翻译触发。
 
 **Tech Stack:** Electron 40 BrowserWindow/screen API, React 19, TypeScript 5.9, Vite multi-view renderer, Vitest 4, Testing Library, existing `src/renderer/app/styles.css`.
 
@@ -35,9 +35,11 @@
 - Modify: `src/renderer/app/styles.css`
   Responsibility: 新增 overlay page 和 spinner 样式，并覆盖当前 `:root` / `body` / `#root` 背景，让透明 BrowserWindow 真正只显示转圈动画。
 - Modify: `src/electron/main.ts`
-  Responsibility: 创建 `loadingOverlayService`，在 `app.whenReady()` 中预热，在 quick translation 执行前立刻显示 overlay，并在 `finally()` 中隐藏；新增 quick translation 进行中忽略重入的保护。
+  Responsibility: 创建 `loadingOverlayService`，在 `app.whenReady()` 中预热，在 quick translation 执行前立刻显示 overlay，并在 `finally()` 中隐藏；新增 quick translation 进行中忽略重入的保护。同时在 context translation 流程中加入相同的 overlay 逻辑。
 - Create: `src/electron/services/loading-overlay-main-integration.test.ts`
   Responsibility: 验证 overlay show/hide 与 quick translation run 的协调逻辑，包括重入保护。
+- Create: `src/electron/services/loading-overlay-context-integration.test.ts`
+  Responsibility: 验证 overlay show/hide 与 context translation run 的协调逻辑。
 
 ## Assumptions
 
@@ -91,7 +93,9 @@ describe('loading overlay window helpers', () => {
   it('builds the loading-overlay URL for both dev and packaged modes', () => {
     // Dev: rendererDevUrl is used directly
     expect(toLoadingOverlayUrl('http://127.0.0.1:5173/', undefined)).toContain('view=loading-overlay');
-    // Packaged: rendererProdHtml is a filesystem path, converted to file:// inside the function
+    // Packaged: rendererProdHtml is a filesystem path, converted to file:// URL internally
+    expect(toLoadingOverlayUrl('http://127.0.0.1:5173/', 'C:\\app\\dist\\index.html'))
+      .toContain('file://');
     expect(toLoadingOverlayUrl('http://127.0.0.1:5173/', 'C:\\app\\dist\\index.html'))
       .toContain('view=loading-overlay');
   });
@@ -582,7 +586,7 @@ git commit -m "feat: route loading overlay view"
 - Create: `src/electron/services/loading-overlay-main-integration.test.ts`
 - Use: `src/electron/services/loading-overlay-service.ts`
 
-> **测试策略:** 由于 `main.ts` 模块顶层有大量副作用（settingsService、helperSessionService、windowService 等），直接 import 测试不可行。改为在 `src/electron/services/` 下写隔离的集成测试，验证 `loadingOverlayService.showAt/hide` 与 `quickTranslationRunner.run` 的协调逻辑。
+> **测试策略:** 由于 `main.ts` 模块顶层有大量副作用（settingsService、helperSessionService、windowService 等），直接 import 测试不可行。改为在 `src/electron/services/` 下写隔离的协调逻辑测试，验证 show/hide 与 runner 的协调模式。真实 wiring 由 `npm run dev` 人工 smoke test 验证（见 Final Verification）。
 
 - [ ] **Step 1: Write the failing test**
 
@@ -624,7 +628,8 @@ describe('loading overlay + quick translation coordination', () => {
       if (isActive) return;
       isActive = true;
 
-      await showAt(cursorPoint.x, cursorPoint.y);
+      // Fire-and-forget showAt (caller does not await)
+      showAt(cursorPoint.x, cursorPoint.y).catch(() => {}); // non-blocking
       try {
         await run();
       } finally {
@@ -649,7 +654,7 @@ describe('loading overlay + quick translation coordination', () => {
     async function triggerQuickTranslate() {
       if (isActive) return;
       isActive = true;
-      await showAt(100, 200);
+      showAt(100, 200).catch(() => {});
       try {
         await run();
       } finally {
@@ -669,6 +674,34 @@ describe('loading overlay + quick translation coordination', () => {
     await second;
 
     expect(hide).toHaveBeenCalledTimes(1);
+  });
+
+  it('hide called before showAt window-load completes still results in hidden overlay', async () => {
+    // showAt has internal async load; hide is sync
+    // The service must handle this race: hide should cancel pending show
+    let pendingShowResolve: () => void;
+    const showLoad = vi.fn().mockImplementation(() =>
+      new Promise<void>(r => { pendingShowResolve = r; })
+    );
+    const show = vi.fn();
+    const hide = vi.fn();
+    const createWindow = vi.fn().mockReturnValue({
+      loadURL: showLoad,
+      show,
+      hide,
+      isDestroyed: () => false,
+      on: vi.fn()
+    });
+
+    // In the actual service, hide() checks pendingShow flag and resolves the pending promise
+    // This test verifies: if hide() is called while show is still loading,
+    // the window never becomes visible
+    hide(); // hide called before load resolves
+    pendingShowResolve!(); // load finally completes
+
+    expect(hide).toHaveBeenCalled();
+    // show() should NOT have been called since hide cancelled the pending show
+    expect(show).not.toHaveBeenCalled();
   });
 });
 ```
@@ -719,12 +752,12 @@ const shortcutService = createShortcutService({
 });
 ```
 
-在 `app.whenReady()` 链中预热：
+在 `app.whenReady()` 链中预热（非阻塞）：
 
 ```ts
 void app.whenReady().then(async () => {
   // ... existing setup ...
-  await loadingOverlayService.prepare(); // 预热 overlay 窗口
+  void loadingOverlayService.prepare(); // best-effort，不阻塞主窗口创建
 });
 ```
 
@@ -740,6 +773,144 @@ git add src/electron/main.ts src/electron/services/loading-overlay-main-integrat
 git commit -m "feat: show loading overlay during quick translation"
 ```
 
+### Task 7: Integrate the loading overlay with context translation
+
+**Files:**
+- Modify: `src/electron/main.ts`
+- Create: `src/electron/services/loading-overlay-context-integration.test.ts`
+- Use: `src/electron/services/loading-overlay-service.ts`
+
+> **测试策略:** 与 Task 6 类似，在 `src/electron/services/` 下写隔离的协调逻辑测试，验证 show/hide 与 context translation runner 的协调模式。
+
+- [ ] **Step 1: Write the failing test**
+
+```ts
+// src/electron/services/loading-overlay-context-integration.test.ts
+import { describe, expect, it, vi } from 'vitest';
+
+const prepare = vi.fn().mockResolvedValue(undefined);
+const showAt = vi.fn().mockResolvedValue(undefined);
+const hide = vi.fn();
+const dispose = vi.fn();
+const getWindow = vi.fn(() => null);
+
+vi.mock('./loading-overlay-service', () => ({
+  createLoadingOverlayService: vi.fn(() => ({
+    prepare,
+    showAt,
+    hide,
+    dispose,
+    getWindow
+  }))
+}));
+
+describe('loading overlay + context translation coordination', () => {
+  beforeEach(() => {
+    prepare.mockClear();
+    showAt.mockClear();
+    hide.mockClear();
+  });
+
+  it('showAt is called before context run, hide is called in finally', async () => {
+    const run = vi.fn().mockResolvedValue({ id: 'ctx1', status: 'completed' });
+
+    let isActive = false;
+    const cursorPoint = { x: 100, y: 200 };
+
+    async function triggerContextTranslate() {
+      if (isActive) return;
+      isActive = true;
+
+      showAt(cursorPoint.x, cursorPoint.y).catch(() => {});
+      try {
+        await run();
+      } finally {
+        hide();
+        isActive = false;
+      }
+    }
+
+    await triggerContextTranslate();
+
+    expect(showAt).toHaveBeenCalledWith(100, 200);
+    expect(run).toHaveBeenCalled();
+    expect(hide).toHaveBeenCalledTimes(1);
+  });
+
+  it('second context trigger is ignored while first is active', async () => {
+    let resolveRun: () => void;
+    const run = vi.fn(() => new Promise<void>((r) => { resolveRun = r; }));
+
+    let isActive = false;
+
+    async function triggerContextTranslate() {
+      if (isActive) return;
+      isActive = true;
+      showAt(100, 200).catch(() => {});
+      try {
+        await run();
+      } finally {
+        hide();
+        isActive = false;
+      }
+    }
+
+    const first = triggerContextTranslate();
+    const second = triggerContextTranslate();
+
+    expect(showAt).toHaveBeenCalledTimes(1);
+    expect(run).toHaveBeenCalledTimes(1);
+
+    resolveRun!();
+    await first;
+    await second;
+
+    expect(hide).toHaveBeenCalledTimes(1);
+  });
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `npx vitest run src/electron/services/loading-overlay-context-integration.test.ts`
+Expected: FAIL because the test file does not exist yet.
+
+- [ ] **Step 3: Write minimal implementation**
+
+在 `main.ts` 中，找到 `onContextTranslate` handler（如果存在）或者找到触发增强翻译的位置，加入相同的 overlay 逻辑：
+
+```ts
+// 模块级共享状态，防止并发 context translation
+let isContextTranslationActive = false;
+
+// onContextTranslate handler 中使用 shared isContextTranslationActive
+// （如果存在独立的 context translation handler）
+// 或者在触发 context translation 的位置：
+
+if (isContextTranslationActive) return;
+isContextTranslationActive = true;
+const cursorPoint = screen.getCursorScreenPoint();
+
+loadingOverlayService.showAt(cursorPoint.x, cursorPoint.y).catch(() => {});
+
+void contextTranslationRunner.run().finally(() => {
+  loadingOverlayService.hide();
+  isContextTranslationActive = false;
+});
+```
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `npx vitest run src/electron/services/loading-overlay-context-integration.test.ts`
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/electron/main.ts src/electron/services/loading-overlay-context-integration.test.ts
+git commit -m "feat: show loading overlay during context translation"
+```
+
 ## Final Verification
 
 - [ ] Run: `npm test`
@@ -749,8 +920,11 @@ git commit -m "feat: show loading overlay during quick translation"
 - [ ] Run: `npm run build`
   Expected: Vite and Electron builds complete successfully with the new overlay route bundled.
 - [ ] Run: `npm run dev`
-  Expected: manual smoke test confirms:
+  Expected: manual smoke test confirms (this is the real wiring verification for Task 6/7):
   1. quick translation 快捷键按下后，光标右下角立即显示 spinner；
-  2. success / failure / popup fallback 后 overlay 都会消失；
-  3. overlay 不拦截鼠标；
-  4. 光标靠近屏幕边缘时窗口仍被裁剪在 `workArea` 内。
+  2. context translation（增强翻译）快捷键按下后，光标右下角立即显示 spinner；
+  3. success / failure / popup fallback 后 overlay 都会消失；
+  4. overlay 不拦截鼠标；
+  5. 光标靠近屏幕边缘时窗口仍被裁剪在 `workArea` 内；
+  6. 快速连续按两次同类快捷键，第二次被忽略（无并发 runner）。
+

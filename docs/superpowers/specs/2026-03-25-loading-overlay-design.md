@@ -9,7 +9,7 @@
 - 快捷键按下 → 光标旁立即显示转圈动画
 - 翻译完成（成功、失败、或 fallback-required）→ 转圈自动消失
   > fallback-required 时 runner 会通过 popup presenter 展示结果，overlay 在 `finally()` 中隐藏
-- V1 仅覆盖 quick translation（不包含 context translation）
+- V1 覆盖 quick translation 和 context translation（增强翻译）
 - V1 暂不覆盖失败态通知和超时保护
 
 ## 技术方案
@@ -158,7 +158,6 @@ const shortcutService = createShortcutService({
 
 - [ ] **失败态通知**：回写失败时弹出系统通知
 - [ ] **超时保护**：30 秒超时后自动消失
-- [ ] **Context Translation 支持**
 - [ ] **持续位置跟随**：翻译期间跟随光标
 
 ## 验收标准
