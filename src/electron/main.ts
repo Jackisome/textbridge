@@ -54,6 +54,7 @@ const windowService = createWindowService({
 });
 
 let isQuickTranslationActive = false;
+let isContextTranslationActive = false;
 
 const loadingOverlayService = createLoadingOverlayService({
   rendererDevUrl: rendererDevUrl ?? '',
@@ -92,6 +93,8 @@ const shortcutService = createShortcutService({
       });
     },
     onContextTranslate() {
+      if (isContextTranslationActive) return; // re-entry protection
+
       const runner = contextTranslationRunner;
 
       if (!runner) {
@@ -99,11 +102,22 @@ const shortcutService = createShortcutService({
         return;
       }
 
+      isContextTranslationActive = true;
+      const cursorPoint = screen.getCursorScreenPoint();
+
+      // overlay show 失败只记录，不阻断主流程
+      loadingOverlayService.showAt(cursorPoint.x, cursorPoint.y).catch(() => {
+        // silent - overlay is UX enhancement only
+      });
+
       void runWithReleasedMainWindow(
         windowService.getMainWindow(),
         () => runTranslationWorkflow('context-translation', () => runner.run()),
         (ms) => setTimeout(ms)
-      );
+      ).finally(() => {
+        loadingOverlayService.hide();
+        isContextTranslationActive = false;
+      });
     }
   }
 });
