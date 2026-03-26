@@ -1,4 +1,4 @@
-import { app, globalShortcut, screen, BrowserWindow } from 'electron';
+import { app, globalShortcut, screen } from 'electron';
 import path from 'node:path';
 import { setTimeout } from 'node:timers/promises';
 import { DEFAULT_SETTINGS } from '../shared/constants/default-settings';
@@ -56,22 +56,6 @@ const windowService = createWindowService({
 let isQuickTranslationActive = false;
 
 const loadingOverlayService = createLoadingOverlayService({
-  createWindow: () => new BrowserWindow({
-    width: 200,
-    height: 80,
-    frame: false,
-    transparent: true,
-    resizable: false,
-    skipTaskbar: true,
-    alwaysOnTop: true,
-    show: false,
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: false
-    }
-  }) as unknown as { loadURL: (url: string) => Promise<void>; setBounds: (bounds: object) => void; show: () => void; hide: () => void; isDestroyed: () => boolean; destroy: () => void; on: (event: string, handler: () => void) => void },
   rendererDevUrl: rendererDevUrl ?? '',
   rendererProdHtml,
   getDisplayNearestPoint: (point) => screen.getDisplayNearestPoint(point)
