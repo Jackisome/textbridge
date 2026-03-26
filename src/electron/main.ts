@@ -1,4 +1,4 @@
-import { app, globalShortcut } from 'electron';
+import { app, globalShortcut, screen, BrowserWindow } from 'electron';
 import path from 'node:path';
 import { setTimeout } from 'node:timers/promises';
 import { DEFAULT_SETTINGS } from '../shared/constants/default-settings';
@@ -23,6 +23,7 @@ import { createTranslationProviderService } from './services/translation-provide
 import { createWindowService } from './services/window-service';
 import { runWithReleasedMainWindow } from './services/window-focus-guard';
 import { createNotificationService } from './platform/notification-factory';
+import { createLoadingOverlayService } from './services/loading-overlay-service';
 
 const rendererDevUrl = process.env.VITE_DEV_SERVER_URL;
 const rendererProdHtml = path.join(__dirname, '..', '..', 'dist', 'index.html');
@@ -52,10 +53,36 @@ const windowService = createWindowService({
   shouldHideOnClose: () => !isQuitting && currentSettings.closeToTray
 });
 
+let isQuickTranslationActive = false;
+
+const loadingOverlayService = createLoadingOverlayService({
+  createWindow: () => new BrowserWindow({
+    width: 200,
+    height: 80,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false
+    }
+  }) as unknown as { loadURL: (url: string) => Promise<void>; setBounds: (bounds: object) => void; show: () => void; hide: () => void; isDestroyed: () => boolean; destroy: () => void; on: (event: string, handler: () => void) => void },
+  rendererDevUrl: rendererDevUrl ?? '',
+  rendererProdHtml,
+  getDisplayNearestPoint: (point) => screen.getDisplayNearestPoint(point)
+});
+
 const shortcutService = createShortcutService({
   registrar: globalShortcut,
   handlers: {
     onQuickTranslate() {
+      if (isQuickTranslationActive) return; // re-entry protection
+
       const runner = quickTranslationRunner;
 
       if (!runner) {
@@ -63,11 +90,22 @@ const shortcutService = createShortcutService({
         return;
       }
 
+      isQuickTranslationActive = true;
+      const cursorPoint = screen.getCursorScreenPoint();
+
+      // overlay show 失败只记录，不阻断主流程
+      loadingOverlayService.showAt(cursorPoint.x, cursorPoint.y).catch(() => {
+        // silent - overlay is UX enhancement only
+      });
+
       void runWithReleasedMainWindow(
         windowService.getMainWindow(),
         () => runTranslationWorkflow('quick-translation', () => runner.run()),
         (ms) => setTimeout(ms)
-      );
+      ).finally(() => {
+        loadingOverlayService.hide();
+        isQuickTranslationActive = false;
+      });
     },
     onContextTranslate() {
       const runner = contextTranslationRunner;
@@ -175,6 +213,7 @@ void app.whenReady().then(async () => {
   });
 
   trayService.ensureTray();
+  void loadingOverlayService.prepare(); // best-effort，不阻塞主窗口创建
   shortcutService.applySettings(currentSettings);
 
   registerSettingsIpc({
