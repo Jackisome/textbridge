@@ -227,6 +227,7 @@ npm run package:installer
 - ✅ 多言語 README サポート（English, 简体中文, 日本語）
 - ✅ MiniMax Provider ネイティブ実装
 - ✅ 翻訳フォールバック用のOSネイティブトースト通知（Electron Notification API）
+- ✅ 翻訳時のロードインジケーター（透明クリック幕等窗口、カーソル旁に回しアニメーション、quick translation と強化翻訳をサポート）
 
 ---
 

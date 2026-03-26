@@ -229,6 +229,7 @@ npm run package:installer
 - ✅ 多语言 README 支持（English, 简体中文, 日本語）
 - ✅ MiniMax Provider 原生实现
 - ✅ OS 原生 Toast 通知用于翻译回退（Electron Notification API）
+- ✅ 翻译时加载动画（透明点击穿透窗口，光标旁显示转圈动画，支持 quick translation 和增强翻译）
 
 ---
 

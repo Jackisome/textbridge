@@ -227,6 +227,7 @@ Output:
 - ✅ Multi-language README support (English, Simplified Chinese, Japanese)
 - ✅ MiniMax Provider native implementation
 - ✅ OS-native toast notification for fallback translation (Electron Notification API)
+- ✅ Loading overlay spinner during quick and context translation (透明点击穿透窗口，光标旁显示转圈动画)
 
 ---
 
