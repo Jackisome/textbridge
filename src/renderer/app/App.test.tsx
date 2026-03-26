@@ -188,6 +188,37 @@ describe('App settings persistence', () => {
     expect(getRuntimeStatus).not.toHaveBeenCalled();
   });
 
+  it('does not bootstrap settings for the loading overlay route', () => {
+    const getSettings = vi.fn().mockResolvedValue(createSettings());
+    const getRuntimeStatus = vi.fn().mockResolvedValue({
+      ready: true,
+      platform: 'win32',
+      activeProvider: 'mock',
+      registeredShortcuts: [],
+      helperState: 'idle',
+      helperLastErrorCode: null,
+      helperPid: null,
+      lastExecution: null,
+      recentExecutions: []
+    });
+
+    window.history.pushState({}, '', '/?view=loading-overlay');
+    window.textBridge = {
+      getSettings,
+      saveSettings: vi.fn().mockResolvedValue(createSettings()),
+      getRuntimeStatus,
+      getContextPromptSession: vi.fn().mockResolvedValue(null),
+      submitContextPrompt: vi.fn().mockResolvedValue(undefined),
+      cancelContextPrompt: vi.fn().mockResolvedValue(undefined)
+    };
+
+    render(<App />);
+
+    expect(screen.getByRole('status', { name: '翻译中' })).not.toBeNull();
+    expect(getSettings).not.toHaveBeenCalled();
+    expect(getRuntimeStatus).not.toHaveBeenCalled();
+  });
+
   it('loads settings through the preload api on startup', async () => {
     const getSettings = vi
       .fn<() => Promise<TranslationClientSettings>>()

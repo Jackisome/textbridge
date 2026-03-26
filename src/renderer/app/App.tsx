@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { defaultTranslationClientSettings } from '../../shared/constants/default-settings';
 import type { RuntimeStatus } from '../../shared/types/ipc';
 import type { ElectronInfo } from '../../shared/types/preload';
+import { LoadingOverlayPage } from '../pages/LoadingOverlayPage';
 import { ContextPopupPage } from '../pages/context-popup-page';
 import { FallbackResultPage } from '../pages/fallback-result-page';
 import { SettingsPage } from '../pages/settings-page';
@@ -306,6 +307,10 @@ function FallbackResultRoute() {
   return <FallbackResultPage />;
 }
 
+function LoadingOverlayRoute() {
+  return <LoadingOverlayPage />;
+}
+
 export default function App() {
   const view = new URLSearchParams(window.location.search).get('view');
 
@@ -315,6 +320,10 @@ export default function App() {
 
   if (view === 'fallback-result') {
     return <FallbackResultRoute />;
+  }
+
+  if (view === 'loading-overlay') {
+    return <LoadingOverlayRoute />;
   }
 
   return <SettingsRoute />;
