@@ -1,7 +1,10 @@
-import type { BrowserWindow } from 'electron';
+import * as path from 'path';
+import { BrowserWindow } from 'electron';
 import {
   toLoadingOverlayUrl,
   resolveLoadingOverlayWindowBounds,
+  createLoadingOverlayBrowserWindow,
+  LOADING_OVERLAY_WINDOW_SIZE,
   type WindowBounds
 } from './loading-overlay-window';
 
@@ -14,17 +17,9 @@ export interface LoadingOverlayService {
 }
 
 export interface CreateLoadingOverlayServiceOptions {
-  createWindow: (options: object) => {
-    loadURL: (url: string) => Promise<void>;
-    setBounds: (bounds: WindowBounds) => void;
-    show: () => void;
-    hide: () => void;
-    isDestroyed: () => boolean;
-    destroy: () => void;
-    on: (event: string, handler: () => void) => void;
-  };
+  createWindow?: () => ReturnType<typeof createLoadingOverlayBrowserWindow>;
   rendererDevUrl: string;
-  rendererProdHtml: string | undefined;
+  rendererProdHtml?: string;
   getDisplayNearestPoint: (point: { x: number; y: number }) => {
     workArea: { x: number; y: number; width: number; height: number };
   };
@@ -36,19 +31,26 @@ export function createLoadingOverlayService({
   rendererProdHtml,
   getDisplayNearestPoint
 }: CreateLoadingOverlayServiceOptions): LoadingOverlayService {
-  let activeWindow: ReturnType<CreateLoadingOverlayServiceOptions['createWindow']> | null = null;
-  let loadPromise: Promise<void> | null = null;
+  let activeWindow: BrowserWindow | null = null;
+  let loadPromise: Promise<BrowserWindow> | null = null;
 
-  function ensureWindowLoaded(): Promise<void> {
-    if (loadPromise) {
-      return loadPromise;
+  function ensureWindowLoaded(): Promise<BrowserWindow> {
+    if (activeWindow && !activeWindow.isDestroyed()) {
+      return loadPromise!;
     }
+
+    const createWindowFn = createWindow
+      ?? (() => createLoadingOverlayBrowserWindow({
+          browserWindowFactory: (opts) => new BrowserWindow(opts) as any,
+          preloadPath: path.join(__dirname, 'preload.js')
+        }));
 
     const url = toLoadingOverlayUrl(rendererDevUrl, rendererProdHtml);
 
     loadPromise = (async () => {
-      activeWindow = createWindow({});
+      activeWindow = createWindowFn() as unknown as BrowserWindow;
       await activeWindow.loadURL(url);
+      return activeWindow;
     })();
 
     loadPromise.catch(() => {
