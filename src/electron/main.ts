@@ -154,6 +154,13 @@ void app.whenReady().then(async () => {
     logger: diagnosticLogService
   });
 
+  // Pre-warm the win32 helper process at startup so the first translation shortcut
+  // doesn't suffer from cold-start latency. Failure is best-effort — the normal
+  // lazy-initialization path still handles runtime failures.
+  void helperSessionService.warmUp().catch(() => {
+    // silent — warm-up failure is logged inside helper-session-service if needed
+  });
+
   const systemInteractionService = createSystemInteractionService({
     adapter: createWin32Adapter({
       helperSession: helperSessionService

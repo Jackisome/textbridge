@@ -45,6 +45,7 @@ export interface Win32HelperSessionService {
     payload: Record<string, unknown>,
     options?: Win32HelperSessionSendOptions
   ): Promise<HelperResponse>;
+  warmUp(timeoutMs?: number): Promise<void>;
   getSnapshot(): Win32HelperSessionSnapshot;
   dispose(): Promise<void>;
 }
@@ -265,6 +266,10 @@ export function createWin32HelperSessionService({
         logHelperTransportError(logger, request, bridgeError);
         throw bridgeError;
       }
+    },
+    async warmUp(timeoutMs?: number): Promise<void> {
+      const timeout = timeoutMs ?? requestTimeoutMs;
+      await ensureReady(timeout);
     },
     getSnapshot(): Win32HelperSessionSnapshot {
       return { ...snapshot };

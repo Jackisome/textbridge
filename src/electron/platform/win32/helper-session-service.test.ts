@@ -55,6 +55,79 @@ function createFakeSpawnedProcess() {
 }
 
 describe('createWin32HelperSessionService', () => {
+  it('warmUp starts the helper and performs a health-check without sending a business request', async () => {
+    const fakeProcess = createFakeSpawnedProcess();
+    const spawnHelperProcess: SpawnWin32HelperProcess = vi.fn(() => fakeProcess.process);
+    const session = createWin32HelperSessionService({
+      isPackaged: false,
+      requestTimeoutMs: 100,
+      spawnHelperProcess
+    });
+
+    expect(spawnHelperProcess).not.toHaveBeenCalled();
+
+    const warmUpPromise = session.warmUp();
+    await Promise.resolve();
+
+    expect(spawnHelperProcess).toHaveBeenCalledTimes(1);
+    expect(fakeProcess.writtenRequests[0]?.kind).toBe('health-check');
+
+    fakeProcess.respondWith({
+      id: fakeProcess.writtenRequests[0]?.id,
+      kind: 'health-check',
+      ok: true,
+      payload: {},
+      error: null
+    });
+
+    await expect(warmUpPromise).resolves.toBeUndefined();
+    expect(session.getSnapshot()).toMatchObject<Partial<Win32HelperSessionSnapshot>>({
+      helperState: 'ready',
+      helperPid: 4321,
+      helperLastErrorCode: null
+    });
+  });
+
+  it('warmUp does not spawn a new process if helper is already ready', async () => {
+    vi.useFakeTimers();
+    try {
+      const fakeProcess = createFakeSpawnedProcess();
+      const spawnHelperProcess: SpawnWin32HelperProcess = vi.fn(() => fakeProcess.process);
+      const session = createWin32HelperSessionService({
+        isPackaged: false,
+        requestTimeoutMs: 100,
+        spawnHelperProcess
+      });
+
+      const warmUpPromise = session.warmUp();
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(1);
+
+      expect(spawnHelperProcess).toHaveBeenCalledTimes(1);
+      expect(fakeProcess.writtenRequests[0]?.kind).toBe('health-check');
+
+      fakeProcess.respondWith({
+        id: fakeProcess.writtenRequests[0]?.id,
+        kind: 'health-check',
+        ok: true,
+        payload: {},
+        error: null
+      });
+
+      await warmUpPromise;
+      expect(session.getSnapshot()).toMatchObject({
+        helperState: 'ready'
+      });
+
+      const secondWarmUpPromise = session.warmUp();
+      await secondWarmUpPromise;
+
+      expect(spawnHelperProcess).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('lazily starts the helper, performs a health-check, and keeps a ready snapshot', async () => {
     const fakeProcess = createFakeSpawnedProcess();
     const spawnHelperProcess: SpawnWin32HelperProcess = vi.fn(() => fakeProcess.process);
