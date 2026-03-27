@@ -5,6 +5,8 @@ out/
 
 # Build artifacts (win32-helper .NET build, etc.)
 .artifacts/
+native/win32-helper/publish/
+release/
 
 # Claude Code internal files
 .claude/
